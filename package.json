@@ -10,6 +10,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:ensure-admin": "tsx prisma/ensure-admin.ts",
+    "gps:backfill": "tsx scripts/backfill-gps.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

@@ -3,6 +3,7 @@ import { deletePostAsAdmin, resetUserPasswordAsAdmin, setUserAdminRoleAsAdmin } 
 import { createInvite, deleteInvite } from "@/app/actions/invites";
 import AdminPushPwaTools from "@/components/AdminPushPwaTools";
 import CopyInviteLink from "@/components/CopyInviteLink";
+import GpsBackfillTool from "@/components/GpsBackfillTool";
 import DeleteUserButton from "@/components/DeleteUserButton";
 import { requireAdmin } from "@/lib/auth";
 import { db, getDatabaseLocation } from "@/lib/db";
@@ -172,6 +173,16 @@ export default async function AdminPage() {
             updatedAt: subscription.updatedAt.toLocaleString(),
           }))}
         />
+      </section>
+
+      <section className="overflow-hidden rounded-2xl bg-white p-4 shadow-sm space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold">Photo GPS backfill</h2>
+          <p className="mt-0.5 text-xs text-neutral-500">
+            Retry EXIF GPS extraction for posts that don&apos;t have a location yet.
+          </p>
+        </div>
+        <GpsBackfillTool />
       </section>
 
       <section className="overflow-hidden rounded-2xl bg-white shadow-sm">

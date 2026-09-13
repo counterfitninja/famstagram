@@ -120,3 +120,12 @@ export async function deletePushSubscriptionAsAdmin(subscriptionId: string) {
   await db.pushSubscription.deleteMany({ where: { id: subscriptionId } });
   revalidatePath("/admin");
 }
+
+export async function backfillGpsCoordinatesAsAdmin() {
+  await requireAdmin();
+  const { backfillMissingGpsCoordinates } = await import("@/lib/gps-backfill");
+  const result = await backfillMissingGpsCoordinates();
+  revalidatePath("/admin");
+  revalidatePath("/map");
+  return result;
+}
