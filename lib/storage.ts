@@ -151,7 +151,10 @@ async function optimizeImage(file: File): Promise<{ body: Buffer; mimeType: stri
   }
 
   const sharp = (await import("sharp")).default;
-  let pipeline = sharp(body).rotate().resize({ width: 2560, height: 2560, fit: "inside", withoutEnlargement: true });
+  let pipeline = sharp(body)
+    .rotate()
+    .resize({ width: 2560, height: 2560, fit: "inside", withoutEnlargement: true })
+    .withMetadata();
   if (file.type === "image/png") {
     pipeline = pipeline.png({ compressionLevel: 9, palette: true, quality: 80 });
   } else if (file.type === "image/webp") {
