@@ -27,7 +27,10 @@ export function middleware(req: NextRequest) {
   const hasSessionCookie = req.cookies.has(sessionOptions.cookieName);
 
   if (!hasSessionCookie && !isPublic && !isPublicAsset) {
-    return NextResponse.redirect(toRequestUrl(req, "/login"));
+    const loginUrl = toRequestUrl(req, "/login");
+    const returnPath = `${pathname}${req.nextUrl.search}`.slice(0, 512);
+    loginUrl.searchParams.set("next", returnPath);
+    return NextResponse.redirect(loginUrl);
   }
   if (hasSessionCookie && pathname === "/login") {
     return NextResponse.redirect(toRequestUrl(req, "/"));

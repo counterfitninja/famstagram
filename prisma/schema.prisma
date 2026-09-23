@@ -158,6 +158,7 @@ model SharedPost {
   @@index([toUserId, createdAt])
 }
 
+// Push identity reuses this recipient-scoped row; no additional event table or migration is required.
 model Notification {
   id        String    @id @default(cuid())
   userId    String
@@ -171,8 +172,10 @@ model Notification {
   type      String
   readAt    DateTime?
   createdAt DateTime  @default(now())
-  feedId    String
-  feed      Feed      @relation(fields: [feedId], references: [id])
+  feedId     String
+  feed       Feed     @relation(fields: [feedId], references: [id])
+  // Stable event identity used to make notification creation and push retries idempotent.
+  deliveryKey String? @unique
 
   @@unique([userId, commentId, type])
   @@index([commentId])

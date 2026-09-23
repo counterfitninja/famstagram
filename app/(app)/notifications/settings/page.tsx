@@ -37,6 +37,13 @@ export default async function NotificationSettingsPage() {
       </div>
 
       <PushSubscriptionControl />
+      <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4 text-xs leading-5 text-sky-900">
+        <p className="font-semibold">Push help</p>
+        <p className="mt-1">
+          Push alerts are optional and only apply to this browser or installed app. If your browser blocks them, allow
+          notifications in its site settings and use Enable again. Your in-app notification center remains available either way.
+        </p>
+      </div>
 
       <div className="rounded-[26px] border border-neutral-200 bg-white p-4 shadow-sm">
         <p className="text-sm leading-6 text-neutral-600">
