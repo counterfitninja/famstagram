@@ -6,12 +6,14 @@ import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { deleteMedia, saveMedia } from "@/lib/storage";
 import { IMAGE_TYPES, MAX_AVATAR_SIZE, registerSchema } from "@/lib/validation";
+import { getSafeLoginRedirect } from "@/lib/auth-redirect";
 
 export type AuthState = { error?: string } | null;
 
 export async function login(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const identifier = String(formData.get("identifier") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  const next = getSafeLoginRedirect(String(formData.get("next") ?? ""));
   if (!identifier || !password) {
     return { error: "Please enter your username/email and password." };
   }
@@ -29,7 +31,7 @@ export async function login(_prev: AuthState, formData: FormData): Promise<AuthS
   session.role = user.role;
   await session.save();
 
-  redirect("/");
+  redirect(next);
 }
 
 export async function logout() {

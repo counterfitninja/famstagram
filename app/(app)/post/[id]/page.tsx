@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import Link from "next/link";
 import PostCard from "@/components/PostCard";
 import { db } from "@/lib/db";
 import { membershipFeedIds, requireFeedContext } from "@/lib/feed-context";
@@ -21,8 +21,21 @@ export default async function PostPage({
       orderBy: { username: "asc" },
     }),
   ]);
-  // 404 when the post is missing OR belongs to a feed the viewer can't see (FR-010).
-  if (!post || !feedIds.includes(post.feedId)) notFound();
+  // Do not reveal whether a stale destination was deleted or belongs to another feed.
+  if (!post || !feedIds.includes(post.feedId)) {
+    return (
+      <div className="mx-auto max-w-xl rounded-3xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-xl text-sky-700">?</div>
+        <h1 className="mt-4 text-lg font-semibold text-neutral-900">This post is unavailable</h1>
+        <p className="mt-2 text-sm leading-6 text-neutral-500">
+          The family activity may have been removed or is no longer available to your account.
+        </p>
+        <Link href="/notifications" className="mt-5 inline-flex rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700">
+          Back to notifications
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <PostCard

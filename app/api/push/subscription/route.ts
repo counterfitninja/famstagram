@@ -3,32 +3,40 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getPushPublicKey, getPushPublicKeyFingerprint, isPushConfigured } from "@/lib/push";
 import { getSession } from "@/lib/session";
+import { isValidPushEndpoint, subscriptionSchema } from "@/lib/push-subscription";
 
-const subscriptionSchema = z.object({
-  endpoint: z.string().url().max(2048),
-  expirationTime: z.number().nullable().optional(),
-  keys: z.object({
-    p256dh: z.string().min(1).max(255),
-    auth: z.string().min(1).max(255),
-  }),
-});
+function expirationDate(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value) || value <= 0) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 async function getUserId() {
   const session = await getSession();
   return session.userId;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  const subscribed =
-    (await db.pushSubscription.count({ where: { userId } })) > 0;
+  const endpoint = new URL(request.url).searchParams.get("endpoint");
+  const currentEndpoint = endpoint && isValidPushEndpoint(endpoint) ? endpoint : null;
+  const [subscriptionCount, currentSubscription] = await Promise.all([
+    db.pushSubscription.count({ where: { userId } }),
+    currentEndpoint
+      ? db.pushSubscription.findUnique({ where: { endpoint: currentEndpoint }, select: { userId: true } })
+      : Promise.resolve(null),
+  ]);
+  const currentSubscribed = Boolean(currentEndpoint && currentSubscription?.userId === userId);
   return NextResponse.json({
     configured: isPushConfigured(),
     publicKey: getPushPublicKey() ?? null,
     publicKeyFingerprint: getPushPublicKeyFingerprint(),
-    subscribed,
+    subscribed: currentEndpoint ? currentSubscribed : subscriptionCount > 0,
+    currentSubscribed,
+    currentEndpoint: currentEndpoint ? currentEndpoint : null,
+    subscriptionCount,
   });
 }
 
@@ -43,6 +51,17 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Invalid push subscription." }, { status: 400 });
 
   const subscription = parsed.data;
+  if (!isValidPushEndpoint(subscription.endpoint)) {
+    return NextResponse.json({ error: "Push endpoint must use HTTPS." }, { status: 400 });
+  }
+  const existing = await db.pushSubscription.findUnique({
+    where: { endpoint: subscription.endpoint },
+    select: { userId: true },
+  });
+  if (existing && existing.userId !== userId) {
+    return NextResponse.json({ error: "Push endpoint belongs to another account." }, { status: 409 });
+  }
+
   const userAgent = request.headers.get("user-agent")?.slice(0, 512) ?? null;
   await db.pushSubscription.upsert({
     where: { endpoint: subscription.endpoint },
@@ -52,18 +71,17 @@ export async function POST(request: Request) {
       userAgent,
       p256dh: subscription.keys.p256dh,
       auth: subscription.keys.auth,
-      expirationTime: subscription.expirationTime ? new Date(subscription.expirationTime) : null,
+      expirationTime: expirationDate(subscription.expirationTime),
     },
     update: {
-      userId,
       userAgent,
       p256dh: subscription.keys.p256dh,
       auth: subscription.keys.auth,
-      expirationTime: subscription.expirationTime ? new Date(subscription.expirationTime) : null,
+      expirationTime: expirationDate(subscription.expirationTime),
     },
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, subscribed: true, endpoint: subscription.endpoint });
 }
 
 export async function DELETE(request: Request) {
