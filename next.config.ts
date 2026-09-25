@@ -3,6 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   experimental: {
+    // Middleware buffers request bodies before passing them to route handlers.
+    // Leave room for multipart overhead above the 100 MB media validation limit.
+    middlewareClientMaxBodySize: "110mb",
     serverActions: {
       bodySizeLimit: "10mb",
     },
