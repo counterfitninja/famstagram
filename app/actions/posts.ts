@@ -5,7 +5,7 @@ import { requireAdmin, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { reverseGeocodeLocation } from "@/lib/geocoding";
 import { deleteMedia } from "@/lib/storage";
-import { latitudeSchema, longitudeSchema } from "@/lib/validation";
+import { latitudeSchema, locationNameSchema, longitudeSchema } from "@/lib/validation";
 
 export type DeletePostResult = { error?: string; success?: boolean };
 export type UpdatePostLocationResult = {
@@ -45,16 +45,21 @@ export async function deletePost(postId: string): Promise<DeletePostResult> {
   return { success: true };
 }
 
-/** Admin-only: manually set or clear a post's map location (e.g. when the source photo has no GPS EXIF). */
+/** Admin-only: set or clear a post's map location from a search result or map pick. */
 export async function updatePostLocation(
   postId: string,
   latitude: number | null,
   longitude: number | null,
+  requestedLocationName?: string | null,
 ): Promise<UpdatePostLocationResult> {
   await requireAdmin();
 
   const post = await db.post.findUnique({ where: { id: postId }, select: { id: true } });
   if (!post) return { error: "Post not found." };
+
+  if ((latitude === null) !== (longitude === null)) {
+    return { error: "Choose a location, or clear both coordinates." };
+  }
 
   let locationName: string | null = null;
   if (latitude !== null && longitude !== null) {
@@ -62,7 +67,10 @@ export async function updatePostLocation(
     const lngCheck = longitudeSchema.safeParse(longitude);
     if (!latCheck.success) return { error: latCheck.error.issues[0].message };
     if (!lngCheck.success) return { error: lngCheck.error.issues[0].message };
-    locationName = await reverseGeocodeLocation(latitude, longitude);
+
+    const nameCheck = locationNameSchema.safeParse(requestedLocationName);
+    if (!nameCheck.success) return { error: nameCheck.error.issues[0].message };
+    locationName = nameCheck.data || (await reverseGeocodeLocation(latitude, longitude));
   }
 
   await db.post.update({
