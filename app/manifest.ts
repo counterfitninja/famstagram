@@ -24,7 +24,20 @@ export default function manifest(): MetadataRoute.Manifest {
       params: {
         title: "title",
         text: "text",
-        files: [{ name: "media", accept: ["image/*", "video/*"] }],
+        files: [
+          {
+            name: "media",
+            accept: [
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/gif",
+              "video/mp4",
+              "video/webm",
+              "video/quicktime",
+            ],
+          },
+        ],
       },
     },
   };
