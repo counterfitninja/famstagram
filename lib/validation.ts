@@ -50,7 +50,14 @@ export const mapQuerySchema = z.object({
 
 // ---------- media ----------
 
-export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+export const IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/heic",
+  "image/heif",
+];
 export const VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 
 export const MAX_IMAGES_PER_POST = 10;
@@ -74,6 +81,8 @@ const MEDIA_TYPE_ALIASES: Record<string, string> = {
 
 const MEDIA_TYPE_BY_EXTENSION: Record<string, string> = {
   ".gif": "image/gif",
+  ".heic": "image/heic",
+  ".heif": "image/heif",
   ".jpeg": "image/jpeg",
   ".jpg": "image/jpeg",
   ".mov": "video/quicktime",
@@ -91,23 +100,41 @@ function inferMediaTypeFromBytes(bytes: Uint8Array): string | null {
     String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
     String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
   ) return "image/webp";
-  if (String.fromCharCode(...bytes.slice(4, 8)) === "ftyp") return "video/mp4";
+  if (String.fromCharCode(...bytes.slice(4, 8)) === "ftyp") {
+    const brand = String.fromCharCode(...bytes.slice(8, 12)).toLowerCase();
+    if (["heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs", "mif1"].includes(brand)) {
+      return "image/heic";
+    }
+    if (["avif", "avis"].includes(brand)) return "image/avif";
+    if (["isom", "iso2", "mp41", "mp42", "avc1", "3gp4", "3gp5", "3g2a", "mmp4", "qt  "].includes(brand)) {
+      return "video/mp4";
+    }
+  }
   if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return "video/webm";
   return null;
 }
 
 /** Repairs generic MIME metadata commonly supplied by Android share providers. */
 export async function normalizeSharedMediaFile(file: File): Promise<File> {
+  const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0];
+  const extensionType = extension ? MEDIA_TYPE_BY_EXTENSION[extension] : undefined;
+
+  // Some mobile pickers report HEIC/HEIF photos as video/mp4 because both use
+  // the ISO-BMFF container. Trust the photo extension for those files.
+  if (extensionType === "image/heic" || extensionType === "image/heif") {
+    return file.type === extensionType
+      ? file
+      : new File([file], file.name, { type: extensionType, lastModified: file.lastModified });
+  }
   if (isImage(file) || isVideo(file)) return file;
 
   const aliasType = MEDIA_TYPE_ALIASES[file.type.toLowerCase()];
-  const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0];
   const inferredType =
     aliasType ??
     (extension ? MEDIA_TYPE_BY_EXTENSION[extension] : undefined) ??
     inferMediaTypeFromBytes(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
 
-  return inferredType
+  return inferredType && (IMAGE_TYPES.includes(inferredType) || VIDEO_TYPES.includes(inferredType))
     ? new File([file], file.name, { type: inferredType, lastModified: file.lastModified })
     : file;
 }
@@ -123,7 +150,7 @@ export function validateMediaFiles(files: { type: string; size: number }[]): { e
   const images = files.filter(isImage);
   const videos = files.filter(isVideo);
   if (images.length + videos.length !== files.length) {
-    return { error: "Unsupported file type. Use JPG, PNG, WebP or GIF images, or an MP4/WebM/MOV video." };
+    return { error: "Unsupported file type. Use JPG, PNG, WebP, GIF, HEIC or HEIF images, or an MP4/WebM/MOV video." };
   }
   if (videos.length > 0) {
     if (files.length > 1) {
