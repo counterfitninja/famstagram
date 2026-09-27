@@ -237,7 +237,7 @@ export default function UploadForm({
         <input
           id="media-library"
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,video/mp4,video/webm,video/quicktime"
           multiple
           className="hidden"
           onChange={(e) => {
@@ -249,7 +249,7 @@ export default function UploadForm({
         <input
           id="media-camera"
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,video/mp4,video/webm,video/quicktime"
           capture="environment"
           className="hidden"
           onChange={(e) => {

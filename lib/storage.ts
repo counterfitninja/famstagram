@@ -29,6 +29,8 @@ const EXT_BY_MIME: Record<string, string> = {
   "image/png": ".png",
   "image/webp": ".webp",
   "image/gif": ".gif",
+  "image/heic": ".heic",
+  "image/heif": ".heif",
   "video/mp4": ".mp4",
   "video/webm": ".webm",
   "video/quicktime": ".mov",
@@ -146,7 +148,10 @@ function driver(): StorageDriver {
 
 async function optimizeImage(file: File): Promise<{ body: Buffer; mimeType: string }> {
   const body = Buffer.from(await file.arrayBuffer());
-  if (file.type === "image/gif") {
+  // Sharp's bundled build does not decode HEIC/HEIF. Keep these files intact
+  // so their EXIF GPS can still be read and their original bytes are available
+  // to clients that support the format.
+  if (["image/gif", "image/heic", "image/heif"].includes(file.type)) {
     return { body, mimeType: file.type };
   }
 

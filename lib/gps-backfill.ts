@@ -9,7 +9,7 @@ export interface GpsBackfillResult {
   unchanged: number;
 }
 
-const IMAGE_KEY_SUFFIXES = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
+const IMAGE_KEY_SUFFIXES = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"];
 
 const imageMediaFilter = {
   OR: [
