@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { extractGpsCoordinates } from "@/lib/exif";
+import { extractFirstGpsCoordinates } from "@/lib/exif";
 import { reverseGeocodeLocation } from "@/lib/geocoding";
 import { createPostNotifications } from "@/lib/notifications";
 import { getSession } from "@/lib/session";
 import { saveMedia } from "@/lib/storage";
-import { captionSchema, isImage, validateMediaFiles } from "@/lib/validation";
+import { captionSchema, normalizeSharedMediaFile, validateMediaFiles } from "@/lib/validation";
 
 /**
  * POST /api/posts — multipart form with "caption", one or more "media" files,
@@ -32,7 +32,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: captionCheck.error.issues[0].message }, { status: 400 });
   }
 
-  const files = form.getAll("media").filter((f): f is File => f instanceof File);
+  // Normalize generic MIME types used by some phone/photo providers before
+  // validating or reading metadata. The server repeats this client-side step
+  // because uploads can also come from the PWA share target or another client.
+  const uploadedFiles = form.getAll("media").filter((f): f is File => f instanceof File);
+  const files = await Promise.all(uploadedFiles.map(normalizeSharedMediaFile));
   const mediaCheck = validateMediaFiles(files);
   if (mediaCheck.error) {
     return NextResponse.json({ error: mediaCheck.error }, { status: 400 });
@@ -61,27 +65,14 @@ export async function POST(req: Request) {
     );
   }
 
-  // Extract EXIF GPS coordinates from the first image with valid GPS tags
-  let latitude: number | null = null;
-  let longitude: number | null = null;
-  let locationName: string | null = null;
-
-  for (const file of files) {
-    if (isImage(file)) {
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const coords = await extractGpsCoordinates(Buffer.from(arrayBuffer));
-        if (coords) {
-          latitude = coords.latitude;
-          longitude = coords.longitude;
-          locationName = await reverseGeocodeLocation(latitude, longitude);
-          break; // Use the primary GPS location from the first geotagged photo
-        }
-      } catch (err) {
-        console.warn("Could not parse EXIF metadata from uploaded image", err);
-      }
-    }
-  }
+  // Extract GPS from the first image with valid EXIF/XMP coordinates before
+  // image optimization can rewrite its metadata.
+  const coords = await extractFirstGpsCoordinates(files);
+  const latitude = coords?.latitude ?? null;
+  const longitude = coords?.longitude ?? null;
+  const locationName = coords
+    ? await reverseGeocodeLocation(coords.latitude, coords.longitude)
+    : null;
 
   const post = await db.post.create({
     data: {

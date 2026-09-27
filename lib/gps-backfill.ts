@@ -9,6 +9,15 @@ export interface GpsBackfillResult {
   unchanged: number;
 }
 
+const IMAGE_KEY_SUFFIXES = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
+
+const imageMediaFilter = {
+  OR: [
+    { mimeType: { startsWith: "image/" } },
+    ...IMAGE_KEY_SUFFIXES.map((suffix) => ({ key: { endsWith: suffix } })),
+  ],
+};
+
 async function toBuffer(body: Buffer | ReadableStream): Promise<Buffer> {
   if (Buffer.isBuffer(body)) return body;
 
@@ -29,11 +38,11 @@ async function toBuffer(body: Buffer | ReadableStream): Promise<Buffer> {
  */
 export async function backfillMissingGpsCoordinates(limit = 500): Promise<GpsBackfillResult> {
   const posts = await db.post.findMany({
-    where: { latitude: null, media: { some: { mimeType: { startsWith: "image/" } } } },
+    where: { OR: [{ latitude: null }, { longitude: null }], media: { some: imageMediaFilter } },
     select: {
       id: true,
       media: {
-        where: { mimeType: { startsWith: "image/" } },
+        where: imageMediaFilter,
         select: { key: true },
         orderBy: { order: "asc" },
       },

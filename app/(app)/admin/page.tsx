@@ -6,6 +6,7 @@ import CopyInviteLink from "@/components/CopyInviteLink";
 import GpsBackfillTool from "@/components/GpsBackfillTool";
 import DeleteUserButton from "@/components/DeleteUserButton";
 import { requireAdmin } from "@/lib/auth";
+import { APP_RELEASE_NAME, APP_VERSION } from "@/lib/app-version";
 import { db, getDatabaseLocation } from "@/lib/db";
 import { isPushConfigured } from "@/lib/push";
 import { getMediaMetadata } from "@/lib/storage";
@@ -128,6 +129,9 @@ export default async function AdminPage() {
           <h1 className="text-lg font-semibold">Admin panel</h1>
           <p className="mt-1 text-xs text-neutral-500">
             Site health, member activity, storage, and post moderation.
+          </p>
+          <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+            Release v{APP_VERSION} · {APP_RELEASE_NAME}
           </p>
         </div>
         <Link href="/admin/invites" className={btnSmall}>

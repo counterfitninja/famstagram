@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { extractFirstGpsCoordinates } from "@/lib/exif";
+import { reverseGeocodeLocation } from "@/lib/geocoding";
 import { createPostNotifications } from "@/lib/notifications";
 import { getSession } from "@/lib/session";
 import { saveMedia } from "@/lib/storage";
@@ -54,8 +56,20 @@ export async function POST(req: Request) {
     );
   }
 
+  const coordinates = await extractFirstGpsCoordinates(files);
+  const locationName = coordinates
+    ? await reverseGeocodeLocation(coordinates.latitude, coordinates.longitude)
+    : null;
+
   const post = await db.post.create({
-    data: { authorId: session.userId, caption, feedId },
+    data: {
+      authorId: session.userId,
+      caption,
+      feedId,
+      latitude: coordinates?.latitude ?? null,
+      longitude: coordinates?.longitude ?? null,
+      locationName,
+    },
   });
 
   try {

@@ -8,6 +8,7 @@ import {
   MAX_VIDEO_SECONDS,
   VIDEO_TYPES,
   isVideo,
+  normalizeSharedMediaFile,
   validateMediaFiles,
 } from "@/lib/validation";
 
@@ -129,7 +130,7 @@ export default function UploadForm({
   async function onSelect(list: FileList | null) {
     setError(null);
     if (!list || list.length === 0) return;
-    const selected = Array.from(list);
+    const selected = await Promise.all(Array.from(list).map(normalizeSharedMediaFile));
 
     const video = selected.find((f) => isVideo(f));
     // A post is either one video or a set of images, so a video always
