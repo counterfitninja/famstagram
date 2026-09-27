@@ -1,4 +1,7 @@
+import { DOMParser } from "@xmldom/xmldom";
 import ExifReader from "exifreader";
+
+const xmlParser = new DOMParser();
 
 export interface GpsCoordinates {
   latitude: number;
@@ -25,7 +28,10 @@ export async function extractGpsCoordinates(
       return null;
     }
 
-    const tags = ExifReader.load(arrayBuffer, { expanded: true }) as unknown as Record<string, any>;
+    const tags = ExifReader.load(arrayBuffer, {
+      expanded: true,
+      domParser: xmlParser,
+    }) as unknown as Record<string, any>;
 
     // ExifReader's expanded GPS group is the most reliable representation.
     const expandedGps = tags.gps;
