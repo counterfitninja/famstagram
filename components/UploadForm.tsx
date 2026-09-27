@@ -245,10 +245,11 @@ export default function UploadForm({
             e.target.value = ""; // allow picking the same file again
           }}
         />
+        {/* Avoid image/* because some mobile browsers strip GPS EXIF from wildcard inputs. */}
         <input
           id="media-camera"
           type="file"
-          accept="image/*,video/*"
+          accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
           capture="environment"
           className="hidden"
           onChange={(e) => {
