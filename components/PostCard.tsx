@@ -83,7 +83,12 @@ export default function PostCard({
         )}
 
         {isAdmin && (
-          <EditLocationButton postId={post.id} latitude={post.latitude} longitude={post.longitude} />
+          <EditLocationButton
+            postId={post.id}
+            latitude={post.latitude}
+            longitude={post.longitude}
+            locationName={post.locationName}
+          />
         )}
         {showFeedLabel && <FeedLabel name={post.feed.name} />}
         {post.author.id === currentUserId && <DeletePostButton postId={post.id} />}
