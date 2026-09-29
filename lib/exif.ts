@@ -303,7 +303,13 @@ function normalizeMetadataKey(value: string): string {
 }
 
 function extractIso6709Gps(buffer: ArrayBuffer | SharedArrayBuffer): GpsCoordinates | null {
-  const raw = new TextDecoder("utf-8", { fatal: false }).decode(new Uint8Array(buffer));
+  const bytes = new Uint8Array(buffer);
+  // ISO 6709 location strings are a QuickTime/ISO-BMFF feature. Restrict
+  // this fallback to files whose first box is `ftyp`; scanning arbitrary
+  // image bytes can turn coincidental signed numbers into a false location.
+  if (bytes.length < 12 || readAscii(bytes, 4, 4) !== "ftyp") return null;
+
+  const raw = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
   // QuickTime location metadata is commonly written as
   // "+latitude-longitude+altitude/" in ©xyz or location.ISO6709 atoms.
   const matches = raw.matchAll(
