@@ -112,6 +112,19 @@ test("extracts GPS from a photo whose mobile MIME type is video/mp4", async () =
   assert.deepEqual(coordinates, { latitude: 47.606167, longitude: -122.333333 });
 });
 
+test("extracts GPS from namespaced XMP metadata in a JPEG", async () => {
+  const xmp = Buffer.from(
+    `http://ns.adobe.com/xap/1.0/\0<x:xmpmeta xmlns:x="adobe:ns:meta/" xmlns:geo="https://example.com/geo/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description geo:GPSLatitude="47,36.22N" geo:GPSLongitude="122,20.0W" /></rdf:RDF></x:xmpmeta>`,
+  );
+  const length = Buffer.alloc(2);
+  length.writeUInt16BE(xmp.length + 2);
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), length, xmp, Buffer.from([0xff, 0xd9])]);
+  const file = new File([jpeg], "photo.jpg", { type: "image/jpeg" });
+
+  const coordinates = await extractFirstGpsCoordinates([file]);
+  assert.deepEqual(coordinates, { latitude: 47.603667, longitude: -122.333333 });
+});
+
 test("reverseGeocodeLocation returns coordinate string as fallback when network is unreachable or times out", async () => {
   // Uses unreachable port/timeout to verify fallback mechanism
   const location = await reverseGeocodeLocation(47.6062, -122.3321, 10);
