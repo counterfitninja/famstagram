@@ -48,20 +48,26 @@ async function parseGpsCoordinates(
     }
 
     // In expanded mode the raw EXIF tags live under tags.exif (not at the root).
-    // Some camera apps omit the reference tags, so also parse the raw values here.
+    // ExifReader normally uses GPSLatitude/GPSLongitude, but some versions and
+    // camera exporters expose human-readable keys such as "GPS Latitude".
+    // Some camera apps also omit the reference tags, so parse the raw values too.
     const exifTags = tags.exif ?? tags;
-    const latitude = parseCoordinateTag(exifTags.GPSLatitude, readReference(exifTags.GPSLatitudeRef));
-    const longitude = parseCoordinateTag(exifTags.GPSLongitude, readReference(exifTags.GPSLongitudeRef));
+    const latitudeTag = findMetadataTag(exifTags, "gpslatitude");
+    const longitudeTag = findMetadataTag(exifTags, "gpslongitude");
+    const latitudeRefTag = findMetadataTag(exifTags, "gpslatituderef");
+    const longitudeRefTag = findMetadataTag(exifTags, "gpslongituderef");
+    const latitude = parseCoordinateTag(latitudeTag, readReference(latitudeRefTag));
+    const longitude = parseCoordinateTag(longitudeTag, readReference(longitudeRefTag));
     if (latitude !== null && longitude !== null) {
       return { coordinates: toGpsCoordinates(latitude, longitude), source: "exif" };
     }
 
     // A number of mobile/photo apps store GPS in XMP rather than the EXIF GPS IFD.
     const xmpTags = tags.xmp ?? {};
-    const xmpLatitudeTag = findXmpTag(xmpTags, "gpslatitude");
-    const xmpLongitudeTag = findXmpTag(xmpTags, "gpslongitude");
-    const xmpLatitudeRefTag = findXmpTag(xmpTags, "gpslatituderef");
-    const xmpLongitudeRefTag = findXmpTag(xmpTags, "gpslongituderef");
+    const xmpLatitudeTag = findMetadataTag(xmpTags, "gpslatitude");
+    const xmpLongitudeTag = findMetadataTag(xmpTags, "gpslongitude");
+    const xmpLatitudeRefTag = findMetadataTag(xmpTags, "gpslatituderef");
+    const xmpLongitudeRefTag = findMetadataTag(xmpTags, "gpslongituderef");
     const xmpLatitude = parseCoordinateTag(
       xmpLatitudeTag,
       readReference(xmpLatitudeRefTag),
@@ -171,8 +177,15 @@ function isValidCoordinate(latitude: number, longitude: number): boolean {
 
 function readReference(refTag: any): string | undefined {
   const value = refTag?.value ?? refTag?.description;
-  if (Array.isArray(value)) return value.join("").trim().toUpperCase();
-  if (typeof value === "string") return value.trim().toUpperCase();
+  const text = Array.isArray(value)
+    ? value.join("").trim().toUpperCase()
+    : typeof value === "string"
+      ? value.trim().toUpperCase()
+      : "";
+  if (text.startsWith("S") || text.includes("SOUTH")) return "S";
+  if (text.startsWith("W") || text.includes("WEST")) return "W";
+  if (text.startsWith("N") || text.includes("NORTH")) return "N";
+  if (text.startsWith("E") || text.includes("EAST")) return "E";
   return undefined;
 }
 
@@ -224,12 +237,28 @@ function parseRational(value: any): number | null {
       ? numerator / denominator
       : null;
   }
+  if (typeof value === "string") {
+    const fraction = value.trim().match(/^(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)$/);
+    if (fraction) {
+      const numerator = Number(fraction[1]);
+      const denominator = Number(fraction[2]);
+      return Number.isFinite(numerator) && Number.isFinite(denominator) && denominator !== 0
+        ? numerator / denominator
+        : null;
+    }
+  }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
 function parseCoordinateString(value: string, ref?: string): number | null {
-  const normalized = value.trim().replace(/[°'\"]/g, " ");
+  const normalized = value
+    .trim()
+    .replace(/(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)/g, (_, numerator, denominator) => {
+      const result = Number(numerator) / Number(denominator);
+      return Number.isFinite(result) ? String(result) : "";
+    })
+    .replace(/[°'\"]/g, " ");
   const embeddedRef = normalized.match(/[NSEW]$/i)?.[0].toUpperCase();
   const effectiveRef = ref ?? embeddedRef;
   const numbers = normalized.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
@@ -243,16 +272,21 @@ function parseCoordinateString(value: string, ref?: string): number | null {
   return effectiveRef === "S" || effectiveRef === "W" ? -Math.abs(coordinate) : coordinate;
 }
 
-function findXmpTag(tags: Record<string, unknown>, suffix: string): unknown {
-  const wanted = suffix.toLowerCase();
+function findMetadataTag(tags: unknown, suffix: string): unknown {
+  if (!tags || typeof tags !== "object" || Array.isArray(tags)) return undefined;
+  const wanted = normalizeMetadataKey(suffix);
   for (const [key, value] of Object.entries(tags)) {
-    if (key.toLowerCase().endsWith(wanted)) return value;
+    if (normalizeMetadataKey(key).endsWith(wanted)) return value;
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      const nested = findXmpTag(value as Record<string, unknown>, wanted);
+      const nested = findMetadataTag(value, suffix);
       if (nested !== undefined) return nested;
     }
   }
   return undefined;
+}
+
+function normalizeMetadataKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function extractRawXmpGps(raw: unknown): GpsCoordinates | null {
@@ -370,7 +404,7 @@ function extractXmpValue(raw: string, name: string): string | null {
 
 function readXmpReference(raw: string, name: string): string | undefined {
   const value = extractXmpValue(raw, name);
-  return value?.trim().toUpperCase();
+  return value ? readReference({ value }) : undefined;
 }
 
 function decodeXmlEntities(value: string): string {

@@ -125,6 +125,21 @@ test("extracts GPS from namespaced XMP metadata in a JPEG", async () => {
   assert.deepEqual(coordinates, { latitude: 47.603667, longitude: -122.333333 });
 });
 
+test("parses rational XMP coordinates and human-readable direction references", async () => {
+  const xmp = Buffer.from(
+    `http://ns.adobe.com/xap/1.0/\0<x:xmpmeta xmlns:x="adobe:ns:meta/" xmlns:exif="http://ns.adobe.com/exif/1.0/"><rdf:RDF><rdf:Description exif:GPSLatitude="47/1,36/1,22/1" exif:GPSLatitudeRef="North latitude" exif:GPSLongitude="122/1,20/1,0/1" exif:GPSLongitudeRef="West longitude" /></rdf:RDF></x:xmpmeta>`,
+  );
+  const length = Buffer.alloc(2);
+  length.writeUInt16BE(xmp.length + 2);
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), length, xmp, Buffer.from([0xff, 0xd9])]);
+
+  const coordinates = await extractFirstGpsCoordinates([
+    new File([jpeg], "photo.jpg", { type: "image/jpeg" }),
+  ]);
+
+  assert.deepEqual(coordinates, { latitude: 47.606111, longitude: -122.333333 });
+});
+
 test("extracts GPS from extended XMP packets when the primary XMP packet omits GPS", async () => {
   const standardHeader = Buffer.from("http://ns.adobe.com/xap/1.0/\0");
   const extensionHeader = Buffer.from("http://ns.adobe.com/xmp/extension/\0");
