@@ -459,24 +459,50 @@ function parseExifTiffGps(bytes: Uint8Array, tiffStart: number): GpsCoordinates 
 
   const firstIfdOffset = readU32(tiffStart + 4);
   if (firstIfdOffset === null) return null;
-  const ifd = readExifIfd(bytes, tiffStart, tiffStart + firstIfdOffset, littleEndian);
-  const gpsPointer = ifd.get(0x8825);
-  if (!gpsPointer) return null;
-  const gpsOffset = readExifUnsignedValue(bytes, gpsPointer, littleEndian);
-  if (gpsOffset === null) return null;
 
-  const gpsIfd = readExifIfd(bytes, tiffStart, tiffStart + gpsOffset, littleEndian);
-  const latitude = readExifRationals(bytes, gpsIfd.get(2), littleEndian);
-  const longitude = readExifRationals(bytes, gpsIfd.get(4), littleEndian);
-  if (!latitude || !longitude) return null;
+  // Most files put GPSInfoIFDPointer in IFD0, but some camera exporters put it
+  // in the EXIF sub-IFD (or another linked IFD). Walk the standard IFD pointer
+  // tags while tracking offsets so malformed metadata cannot create a loop.
+  const pendingIfdOffsets = [firstIfdOffset];
+  const visitedIfdOffsets = new Set<number>();
+  while (pendingIfdOffsets.length > 0 && visitedIfdOffsets.size < 64) {
+    const ifdOffset = pendingIfdOffsets.shift();
+    if (ifdOffset === undefined || visitedIfdOffsets.has(ifdOffset)) continue;
+    visitedIfdOffsets.add(ifdOffset);
 
-  const latitudeRef = readExifAscii(bytes, gpsIfd.get(1));
-  const longitudeRef = readExifAscii(bytes, gpsIfd.get(3));
-  const latitudeValue = parseCoordinateTag(latitude, latitudeRef);
-  const longitudeValue = parseCoordinateTag(longitude, longitudeRef);
-  return latitudeValue !== null && longitudeValue !== null
-    ? toGpsCoordinates(latitudeValue, longitudeValue)
-    : null;
+    const ifd = readExifIfd(bytes, tiffStart, tiffStart + ifdOffset, littleEndian);
+    const gpsPointer = ifd.get(0x8825);
+    if (gpsPointer) {
+      const gpsOffset = readExifUnsignedValue(bytes, gpsPointer, littleEndian);
+      if (gpsOffset !== null) {
+        const gpsIfd = readExifIfd(bytes, tiffStart, tiffStart + gpsOffset, littleEndian);
+        const latitude = readExifRationals(bytes, gpsIfd.get(2), littleEndian);
+        const longitude = readExifRationals(bytes, gpsIfd.get(4), littleEndian);
+        if (latitude && longitude) {
+          const latitudeRef = readExifAscii(bytes, gpsIfd.get(1));
+          const longitudeRef = readExifAscii(bytes, gpsIfd.get(3));
+          const latitudeValue = parseCoordinateTag(latitude, latitudeRef);
+          const longitudeValue = parseCoordinateTag(longitude, longitudeRef);
+          const coordinates = latitudeValue !== null && longitudeValue !== null
+            ? toGpsCoordinates(latitudeValue, longitudeValue)
+            : null;
+          if (coordinates) return coordinates;
+        }
+      }
+    }
+
+    // ExifIFDPointer, SubIFDs, and InteroperabilityIFDPointer can lead to
+    // another directory containing the GPS pointer.
+    for (const pointerTag of [0x8769, 0x014a, 0xa005]) {
+      const pointer = ifd.get(pointerTag);
+      if (!pointer) continue;
+      const offsets = readExifUnsignedValues(bytes, pointer, littleEndian);
+      for (const offset of offsets) {
+        if (offset > 0 && !visitedIfdOffsets.has(offset)) pendingIfdOffsets.push(offset);
+      }
+    }
+  }
+  return null;
 }
 
 function readExifIfd(
@@ -514,10 +540,26 @@ function readExifUnsignedValue(
   entry: RawExifEntry,
   littleEndian: boolean,
 ): number | null {
-  if (entry.type !== 3 && entry.type !== 4) return null;
-  return entry.type === 3
-    ? readEndianU16(bytes, entry.valueOffset, littleEndian)
-    : readEndianU32(bytes, entry.valueOffset, littleEndian);
+  return readExifUnsignedValues(bytes, entry, littleEndian)[0] ?? null;
+}
+
+function readExifUnsignedValues(
+  bytes: Uint8Array,
+  entry: RawExifEntry,
+  littleEndian: boolean,
+): number[] {
+  if (entry.type !== 3 && entry.type !== 4) return [];
+  const values: number[] = [];
+  const itemSize = entry.type === 3 ? 2 : 4;
+  for (let index = 0; index < entry.count; index += 1) {
+    const position = entry.valueOffset + index * itemSize;
+    const value = entry.type === 3
+      ? readEndianU16(bytes, position, littleEndian)
+      : readEndianU32(bytes, position, littleEndian);
+    if (value === null) return [];
+    values.push(value);
+  }
+  return values;
 }
 
 function readExifRationals(

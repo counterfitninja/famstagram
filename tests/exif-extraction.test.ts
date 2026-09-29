@@ -112,6 +112,71 @@ test("extracts GPS from a photo whose mobile MIME type is video/mp4", async () =
   assert.deepEqual(coordinates, { latitude: 47.606167, longitude: -122.333333 });
 });
 
+test("extracts GPS when the GPS pointer is in an EXIF sub-IFD", async () => {
+  const tiff = Buffer.alloc(280);
+  tiff.write("II", 0, "ascii");
+  tiff.writeUInt16LE(42, 2);
+  tiff.writeUInt32LE(8, 4);
+
+  // IFD0 -> EXIF sub-IFD -> GPS IFD.
+  tiff.writeUInt16LE(1, 8);
+  tiff.writeUInt16LE(0x8769, 10);
+  tiff.writeUInt16LE(4, 12);
+  tiff.writeUInt32LE(1, 14);
+  tiff.writeUInt32LE(100, 18);
+
+  tiff.writeUInt16LE(1, 100);
+  tiff.writeUInt16LE(0x8825, 102);
+  tiff.writeUInt16LE(4, 104);
+  tiff.writeUInt32LE(1, 106);
+  tiff.writeUInt32LE(120, 110);
+
+  const gpsOffset = 120;
+  tiff.writeUInt16LE(4, gpsOffset);
+  tiff.writeUInt16LE(1, gpsOffset + 2);
+  tiff.writeUInt16LE(2, gpsOffset + 4);
+  tiff.writeUInt32LE(2, gpsOffset + 6);
+  tiff.write("N\0", gpsOffset + 10, "ascii");
+  tiff.writeUInt16LE(2, gpsOffset + 14);
+  tiff.writeUInt16LE(5, gpsOffset + 16);
+  tiff.writeUInt32LE(3, gpsOffset + 18);
+  tiff.writeUInt32LE(220, gpsOffset + 22);
+  tiff.writeUInt16LE(3, gpsOffset + 26);
+  tiff.writeUInt16LE(2, gpsOffset + 28);
+  tiff.writeUInt32LE(2, gpsOffset + 30);
+  tiff.write("W\0", gpsOffset + 34, "ascii");
+  tiff.writeUInt16LE(4, gpsOffset + 38);
+  tiff.writeUInt16LE(5, gpsOffset + 40);
+  tiff.writeUInt32LE(3, gpsOffset + 42);
+  tiff.writeUInt32LE(244, gpsOffset + 46);
+
+  const writeRational = (offset: number, value: number) => {
+    tiff.writeUInt32LE(value, offset);
+    tiff.writeUInt32LE(1, offset + 4);
+  };
+  writeRational(220, 47);
+  writeRational(228, 36);
+  writeRational(236, 22);
+  writeRational(244, 122);
+  writeRational(252, 20);
+  writeRational(260, 0);
+
+  const exif = Buffer.concat([Buffer.from("Exif\0\0", "ascii"), tiff]);
+  const segmentLength = Buffer.alloc(2);
+  segmentLength.writeUInt16BE(exif.length + 2);
+  const jpeg = Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff, 0xe1]),
+    segmentLength,
+    exif,
+    Buffer.from([0xff, 0xd9]),
+  ]);
+
+  const coordinates = await extractFirstGpsCoordinates([
+    new File([jpeg], "photo.jpg", { type: "image/jpeg" }),
+  ]);
+  assert.deepEqual(coordinates, { latitude: 47.606111, longitude: -122.333333 });
+});
+
 test("extracts GPS from namespaced XMP metadata in a JPEG", async () => {
   const xmp = Buffer.from(
     `http://ns.adobe.com/xap/1.0/\0<x:xmpmeta xmlns:x="adobe:ns:meta/" xmlns:geo="https://example.com/geo/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description geo:GPSLatitude="47,36.22N" geo:GPSLongitude="122,20.0W" /></rdf:RDF></x:xmpmeta>`,
