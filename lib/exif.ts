@@ -12,9 +12,15 @@ export interface GpsCoordinates {
  * Extracts GPS latitude and longitude from an image buffer or ArrayBuffer.
  * Returns null if no GPS tags exist or coordinates are invalid.
  */
-export async function extractGpsCoordinates(
+type GpsParseResult = {
+  coordinates: GpsCoordinates | null;
+  source?: "expanded" | "exif" | "xmp";
+  error?: string;
+};
+
+async function parseGpsCoordinates(
   buffer: Buffer | ArrayBuffer | Uint8Array,
-): Promise<GpsCoordinates | null> {
+): Promise<GpsParseResult> {
   try {
     let arrayBuffer: ArrayBuffer | SharedArrayBuffer;
     if (buffer instanceof ArrayBuffer || buffer instanceof SharedArrayBuffer) {
@@ -25,7 +31,7 @@ export async function extractGpsCoordinates(
         buffer.byteOffset + buffer.byteLength,
       );
     } else {
-      return null;
+      return { coordinates: null, error: "unsupported-buffer" };
     }
 
     const tags = ExifReader.load(arrayBuffer, {
@@ -38,7 +44,7 @@ export async function extractGpsCoordinates(
     const expandedLatitude = parseCoordinateTag(expandedGps?.Latitude);
     const expandedLongitude = parseCoordinateTag(expandedGps?.Longitude);
     if (expandedLatitude !== null && expandedLongitude !== null) {
-      return toGpsCoordinates(expandedLatitude, expandedLongitude);
+      return { coordinates: toGpsCoordinates(expandedLatitude, expandedLongitude), source: "expanded" };
     }
 
     // In expanded mode the raw EXIF tags live under tags.exif (not at the root).
@@ -47,7 +53,7 @@ export async function extractGpsCoordinates(
     const latitude = parseCoordinateTag(exifTags.GPSLatitude, readReference(exifTags.GPSLatitudeRef));
     const longitude = parseCoordinateTag(exifTags.GPSLongitude, readReference(exifTags.GPSLongitudeRef));
     if (latitude !== null && longitude !== null) {
-      return toGpsCoordinates(latitude, longitude);
+      return { coordinates: toGpsCoordinates(latitude, longitude), source: "exif" };
     }
 
     // A number of mobile/photo apps store GPS in XMP rather than the EXIF GPS IFD.
@@ -61,30 +67,70 @@ export async function extractGpsCoordinates(
       readReference(xmpTags["exif:GPSLongitudeRef"] ?? xmpTags.GPSLongitudeRef),
     );
     if (xmpLatitude !== null && xmpLongitude !== null) {
-      return toGpsCoordinates(xmpLatitude, xmpLongitude);
+      return { coordinates: toGpsCoordinates(xmpLatitude, xmpLongitude), source: "xmp" };
     }
 
-    return null;
-  } catch {
+    return { coordinates: null };
+  } catch (error) {
     // If image format has no EXIF or is corrupt, fail gracefully.
-    return null;
+    return {
+      coordinates: null,
+      error: error instanceof Error ? error.message.slice(0, 160) : "parse-failed",
+    };
   }
 }
 
-/** Extracts the first valid GPS location from a post's uploaded media. */
-export async function extractFirstGpsCoordinates(files: readonly File[]): Promise<GpsCoordinates | null> {
-  for (const file of files) {
+export async function extractGpsCoordinates(
+  buffer: Buffer | ArrayBuffer | Uint8Array,
+): Promise<GpsCoordinates | null> {
+  return (await parseGpsCoordinates(buffer)).coordinates;
+}
+
+export interface GpsFileDiagnostics {
+  index: number;
+  type: string;
+  size: number;
+  coordinatesFound: boolean;
+  source?: GpsParseResult["source"];
+  error?: string;
+}
+
+export async function extractFirstGpsCoordinatesWithDiagnostics(files: readonly File[]): Promise<{
+  coordinates: GpsCoordinates | null;
+  files: GpsFileDiagnostics[];
+}> {
+  const diagnostics: GpsFileDiagnostics[] = [];
+  for (const [index, file] of files.entries()) {
     try {
       // Do not trust the browser-provided MIME type here. Mobile share
       // providers sometimes label HEIC/JPEG photos as video/mp4; the parser
       // safely returns null for actual videos and unsupported files.
-      const coordinates = await extractGpsCoordinates(await file.arrayBuffer());
-      if (coordinates) return coordinates;
-    } catch {
-      // A malformed image should not prevent the rest of a post from uploading.
+      const result = await parseGpsCoordinates(await file.arrayBuffer());
+      diagnostics.push({
+        index,
+        type: file.type,
+        size: file.size,
+        coordinatesFound: result.coordinates !== null,
+        source: result.source,
+        error: result.error,
+      });
+      if (result.coordinates) return { coordinates: result.coordinates, files: diagnostics };
+    } catch (error) {
+      diagnostics.push({
+        index,
+        type: file.type,
+        size: file.size,
+        coordinatesFound: false,
+        error: error instanceof Error ? error.message.slice(0, 160) : "read-failed",
+      });
     }
   }
-  return null;
+  return { coordinates: null, files: diagnostics };
+}
+
+/** Extracts the first valid GPS location from a post's uploaded media. */
+export async function extractFirstGpsCoordinates(files: readonly File[]): Promise<GpsCoordinates | null> {
+  return (await extractFirstGpsCoordinatesWithDiagnostics(files)).coordinates;
 }
 
 function toGpsCoordinates(latitude: number, longitude: number): GpsCoordinates | null {
