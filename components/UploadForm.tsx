@@ -188,7 +188,7 @@ export default function UploadForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-4 pb-24 sm:pb-0">
       {feeds.length > 1 && (
         <div>
           <label htmlFor="feed" className="mb-1 block text-xs font-medium text-neutral-600">
@@ -346,8 +346,8 @@ export default function UploadForm({
                   <button
                     type="button"
                     className={`w-full px-3 py-2 text-left text-sm ${
-                      index === activeMentionIndex ? "bg-sky-50 text-sky-700" : "text-neutral-700"
-                    } hover:bg-sky-50 hover:text-sky-700`}
+                      index === activeMentionIndex ? "bg-sky-50 text-sky-700" : "text-sky-900"
+                    } hover:bg-sky-100 hover:text-sky-800`}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       if (captionRef.current) {
@@ -368,8 +368,15 @@ export default function UploadForm({
 
       {error && <p className="rounded-lg bg-red-50 p-2 text-sm text-red-600">{error}</p>}
 
-      <button type="submit" disabled={uploading} className={btnPrimary}>
-        {uploading ? "Uploading…" : "Share with family"}
+      <button type="submit" disabled={uploading} className={`${btnPrimary} hidden sm:block`}>
+        {uploading ? "Uploading…" : "Share"}
+      </button>
+      <button
+        type="submit"
+        disabled={uploading}
+        className={`${btnPrimary} fixed inset-x-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-20 block w-auto rounded-xl py-3 shadow-lg sm:hidden`}
+      >
+        {uploading ? "Uploading…" : "Share"}
       </button>
     </form>
   );
