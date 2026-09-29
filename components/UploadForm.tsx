@@ -374,7 +374,7 @@ export default function UploadForm({
       <button
         type="submit"
         disabled={uploading}
-        className={`${btnPrimary} fixed inset-x-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-20 block w-auto rounded-xl py-3 shadow-lg sm:hidden`}
+        className={`${btnPrimary} fixed inset-x-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-20 block !w-auto rounded-xl py-3 shadow-lg sm:hidden`}
       >
         {uploading ? "Uploading…" : "Share"}
       </button>
