@@ -13,6 +13,17 @@ export async function markAllNotificationsRead() {
   revalidatePath("/notifications");
 }
 
+export async function markNotificationRead(notificationId: string) {
+  const user = await requireUser();
+  if (!notificationId || notificationId.length > 128) return false;
+  const result = await db.notification.updateMany({
+    where: { id: notificationId, userId: user.id, readAt: null },
+    data: { readAt: new Date() },
+  });
+  revalidatePath("/notifications");
+  return result.count > 0;
+}
+
 export async function setUserNotificationMute(targetUserId: string, muted: boolean) {
   const user = await requireUser();
   if (targetUserId === user.id) return;

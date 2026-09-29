@@ -1,0 +1,42 @@
+export const pushEventFixtures = {
+  post: {
+    notificationId: "notification-post-1",
+    type: "post" as const,
+    actorUsername: "alex",
+    caption: "A new family photo",
+    postId: "post-1",
+    feedId: "feed-family",
+  },
+  comment: {
+    notificationId: "notification-comment-1",
+    type: "comment" as const,
+    actorUsername: "sam",
+    caption: "Looks great!",
+    postId: "post-1",
+    commentId: "comment-1",
+    feedId: "feed-family",
+  },
+  mention: {
+    notificationId: "notification-mention-1",
+    type: "mention" as const,
+    actorUsername: "jordan",
+    caption: "@alex join us",
+    postId: "post-2",
+    feedId: "feed-family",
+  },
+  longText: {
+    notificationId: "notification-long-1",
+    type: "post" as const,
+    actorUsername: "a\nvery\tlong\u0000name",
+    caption: `${"A long caption ".repeat(40)}\nwith controls`,
+    postId: "post-long",
+    feedId: "feed-family",
+  },
+  legacy: {
+    title: "alex shared a new post",
+    body: "A legacy alert",
+    url: "/post/post-legacy",
+    tag: "post-post-legacy",
+    data: { url: "/post/post-legacy" },
+  },
+} as const;

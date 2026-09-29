@@ -1,6 +1,65 @@
 import { db } from "@/lib/db";
-import { sendPushNotifications } from "@/lib/push";
+import { sendPushNotifications, type PushRecipient } from "@/lib/push";
 import { getCommentNotificationRecipients } from "@/lib/notification-policy";
+
+export function getNotificationDeliveryRecipients(recipients: PushRecipient[]) {
+  return recipients.filter((recipient) => Boolean(recipient.id && recipient.notificationId));
+}
+
+export function canAcknowledgeNotification(notification: { userId: string } | null, userId: string) {
+  return Boolean(notification && notification.userId === userId);
+}
+
+type NotificationCreateData = {
+  userId: string;
+  actorId: string;
+  postId: string;
+  commentId?: string;
+  type: string;
+  feedId: string;
+  deliveryKey: string;
+};
+
+type NotificationLookup = {
+  userId: string;
+  postId: string;
+  commentId: string | null;
+  type: string;
+};
+
+async function createNotificationOnce(data: NotificationCreateData, legacyLookup: NotificationLookup) {
+  const existing = await db.notification.findFirst({ where: legacyLookup, select: { id: true } });
+  if (existing) return { id: existing.id, created: false };
+
+  const keyedExisting = await db.notification.findUnique({
+    where: { deliveryKey: data.deliveryKey },
+    select: { id: true },
+  });
+  if (keyedExisting) return { id: keyedExisting.id, created: false };
+
+  try {
+    const notification = await db.notification.create({ data, select: { id: true } });
+    return { id: notification.id, created: true };
+  } catch (error) {
+    // A concurrent retry may win the unique delivery key between the reads above.
+    const racedNotification = await db.notification.findUnique({
+      where: { deliveryKey: data.deliveryKey },
+      select: { id: true },
+    });
+    if (racedNotification) return { id: racedNotification.id, created: false };
+    throw error;
+  }
+}
+
+async function sendPushSafely(input: Parameters<typeof sendPushNotifications>[0]) {
+  try {
+    await sendPushNotifications(input);
+  } catch (error) {
+    console.error("Push delivery failed after in-app notification creation", {
+      message: error instanceof Error ? error.message : "unknown error",
+    });
+  }
+}
 
 const MENTION_RE = /(^|[^a-zA-Z0-9_])@([a-zA-Z0-9_]{3,20})\b/g;
 
@@ -49,19 +108,35 @@ export async function createPostNotifications({
 
   if (recipientsWithType.length === 0) return;
 
-  await db.notification.createMany({
-    data: recipientsWithType.map((recipient) => ({
-      userId: recipient.id,
-      actorId: authorId,
-      postId,
-      type: recipient.type,
-      feedId,
-    })),
-  });
+  const notifications = await Promise.all(
+    recipientsWithType.map((recipient) =>
+      createNotificationOnce(
+        {
+          userId: recipient.id,
+          actorId: authorId,
+          postId,
+          type: recipient.type,
+          feedId,
+          deliveryKey: `post:${postId}:${recipient.id}:${recipient.type}`,
+        },
+        { userId: recipient.id, postId, commentId: null, type: recipient.type },
+      ),
+    ),
+  );
 
   const author = await db.user.findUnique({ where: { id: authorId }, select: { username: true } });
   if (author) {
-    await sendPushNotifications({ recipients: recipientsWithType, actorUsername: author.username, caption, postId, feedId });
+    await sendPushSafely({
+      recipients: getNotificationDeliveryRecipients(
+        recipientsWithType
+          .map((recipient, index) => ({ ...recipient, notificationId: notifications[index].id }))
+          .filter((_, index) => notifications[index].created),
+      ),
+      actorUsername: author.username,
+      caption,
+      postId,
+      feedId,
+    });
   }
 }
 
@@ -95,28 +170,36 @@ export async function createCommentNotifications({
 
   if (recipients.length === 0) return;
 
-  // (userId, commentId, type) is unique, so retries re-mark the same event unread instead of duplicating it.
-  await Promise.all(
+  const notifications = await Promise.all(
     recipients.map((recipient) =>
-      db.notification.upsert({
-        where: {
-          userId_commentId_type: { userId: recipient.id, commentId, type: recipient.type },
-        },
-        update: { readAt: null, actorId: authorId, postId, feedId: post.feedId, createdAt: new Date() },
-        create: {
+      createNotificationOnce(
+        {
           userId: recipient.id,
           actorId: authorId,
           postId,
           commentId,
           type: recipient.type,
           feedId: post.feedId,
+          deliveryKey: `comment:${commentId}:${recipient.id}:${recipient.type}`,
         },
-      }),
+        { userId: recipient.id, postId, commentId, type: recipient.type },
+      ),
     ),
   );
 
   const author = await db.user.findUnique({ where: { id: authorId }, select: { username: true } });
   if (author) {
-    await sendPushNotifications({ recipients, actorUsername: author.username, caption: text, postId, feedId: post.feedId });
+    await sendPushSafely({
+      recipients: getNotificationDeliveryRecipients(
+        recipients
+          .map((recipient, index) => ({ ...recipient, notificationId: notifications[index].id }))
+          .filter((_, index) => notifications[index].created),
+      ),
+      actorUsername: author.username,
+      caption: text,
+      postId,
+      feedId: post.feedId,
+      commentId,
+    });
   }
 }
