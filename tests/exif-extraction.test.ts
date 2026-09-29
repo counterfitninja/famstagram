@@ -125,6 +125,44 @@ test("extracts GPS from namespaced XMP metadata in a JPEG", async () => {
   assert.deepEqual(coordinates, { latitude: 47.603667, longitude: -122.333333 });
 });
 
+test("extracts GPS from extended XMP packets when the primary XMP packet omits GPS", async () => {
+  const standardHeader = Buffer.from("http://ns.adobe.com/xap/1.0/\0");
+  const extensionHeader = Buffer.from("http://ns.adobe.com/xmp/extension/\0");
+  const guid = "A1B2C3D4E5F60718293A4B5C6D7E8F90";
+  const extendedXmp = Buffer.from(
+    `<x:xmpmeta xmlns:x="http://ns.adobe.com/xap/1.0/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:exif="http://ns.adobe.com/exif/1.0/"><rdf:RDF><rdf:Description exif:GPSLatitude="51,14.123N" exif:GPSLongitude="2,19.262W" /></rdf:RDF></x:xmpmeta>`,
+  );
+  const standardXmp = Buffer.concat([
+    standardHeader,
+    Buffer.from(`<x:xmpmeta xmlns:x="http://ns.adobe.com/xap/1.0/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:xmpNote="http://ns.adobe.com/xmp/note/"><rdf:RDF><rdf:Description xmpNote:HasExtendedXMP="${guid}" /></rdf:RDF></x:xmpmeta>`),
+  ]);
+  const makeApp1 = (data: Buffer) => {
+    const length = Buffer.alloc(2);
+    length.writeUInt16BE(data.length + 2);
+    return Buffer.concat([Buffer.from([0xff, 0xe1]), length, data]);
+  };
+  const makeExtension = (chunk: Buffer, offset: number) => {
+    const metadata = Buffer.alloc(8);
+    metadata.writeUInt32BE(extendedXmp.length, 0);
+    metadata.writeUInt32BE(offset, 4);
+    return Buffer.concat([extensionHeader, Buffer.from(guid), metadata, chunk]);
+  };
+  const midpoint = Math.floor(extendedXmp.length / 2);
+  const jpeg = Buffer.concat([
+    Buffer.from([0xff, 0xd8]),
+    makeApp1(standardXmp),
+    makeApp1(makeExtension(extendedXmp.subarray(0, midpoint), 0)),
+    makeApp1(makeExtension(extendedXmp.subarray(midpoint), midpoint)),
+    Buffer.from([0xff, 0xd9]),
+  ]);
+
+  const coordinates = await extractFirstGpsCoordinates([
+    new File([jpeg], "photo.jpg", { type: "image/jpeg" }),
+  ]);
+
+  assert.deepEqual(coordinates, { latitude: 51.235383, longitude: -2.321033 });
+});
+
 test("reverseGeocodeLocation returns coordinate string as fallback when network is unreachable or times out", async () => {
   // Uses unreachable port/timeout to verify fallback mechanism
   const location = await reverseGeocodeLocation(47.6062, -122.3321, 10);
