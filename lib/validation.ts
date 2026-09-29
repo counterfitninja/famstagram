@@ -119,18 +119,38 @@ function isSupportedMediaType(type: string | null | undefined): type is (typeof 
   return Boolean(type && (IMAGE_TYPES.includes(type) || VIDEO_TYPES.includes(type)));
 }
 
+export interface MediaFileDiagnostics {
+  size: number;
+  suppliedType: string | null;
+  extension: string | null;
+  inferredType: string | null;
+  headerHex: string;
+}
+
+/** Returns non-sensitive upload metadata useful for diagnosing mobile MIME issues. */
+export async function inspectMediaFile(file: File): Promise<MediaFileDiagnostics> {
+  const bytes = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] ?? null;
+  return {
+    size: file.size,
+    suppliedType: file.type || null,
+    extension,
+    inferredType: inferMediaTypeFromBytes(bytes),
+    headerHex: Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(""),
+  };
+}
+
 /** Repairs generic or misleading MIME metadata commonly supplied by mobile share providers. */
 export async function normalizeSharedMediaFile(file: File): Promise<File> {
-  const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0];
-  const extensionType = extension ? MEDIA_TYPE_BY_EXTENSION[extension] : undefined;
+  const diagnostics = await inspectMediaFile(file);
+  const extensionType = diagnostics.extension ? MEDIA_TYPE_BY_EXTENSION[diagnostics.extension] : undefined;
   const suppliedType = file.type.toLowerCase();
-  const inferredType = inferMediaTypeFromBytes(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
 
   // Content signatures take precedence over browser-provided MIME values. In
   // particular, Android/iOS can label an HEIC photo as video/mp4 or omit its
   // filename extension when it is shared from a photo library.
   const normalizedType =
-    (isSupportedMediaType(inferredType) && inferredType) ||
+    (isSupportedMediaType(diagnostics.inferredType) && diagnostics.inferredType) ||
     MEDIA_TYPE_ALIASES[suppliedType] ||
     extensionType ||
     (isSupportedMediaType(suppliedType) && suppliedType);
