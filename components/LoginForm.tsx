@@ -5,12 +5,13 @@ import { login } from "@/app/actions/auth";
 import PasskeyLoginButton from "@/components/PasskeyLoginButton";
 import { btnPrimary, inputCls } from "@/lib/ui";
 
-export default function LoginForm() {
+export default function LoginForm({ nextPath }: { nextPath?: string }) {
   const [state, formAction, isPending] = useActionState(login, null);
   const [identifier, setIdentifier] = useState("");
 
   return (
     <form action={formAction} className="space-y-4">
+      <input type="hidden" name="next" value={nextPath ?? ""} />
       {state?.error && (
         <p className="rounded-lg bg-red-50 p-2 text-sm text-red-600">{state.error}</p>
       )}

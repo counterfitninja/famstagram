@@ -1,4 +1,4 @@
-self.__famstagramSwVersion = "2026-09-06-push-receipts-v3";
+self.__famstagramSwVersion = "2026-09-29-push-click-routing-v1";
 
 function broadcastToWindows(message) {
   return clients
@@ -16,6 +16,21 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+function resolveNotificationUrl(value) {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return new URL("/notifications", self.location.origin).href;
+  }
+  return new URL(value.slice(0, 512), self.location.origin).href;
+}
+
+function isFamstagramClient(client) {
+  try {
+    return new URL(client.url).origin === self.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 function rememberPush(data) {
   const entry = {
     serviceWorkerVersion: self.__famstagramSwVersion,
@@ -23,7 +38,7 @@ function rememberPush(data) {
     title: data.title ?? "Famstagram",
     body: data.body ?? "You have a new notification.",
     tag: data.tag ?? null,
-    url: data.url ?? "/notifications",
+    url: resolveNotificationUrl(data.url),
   };
   self.__lastPushDebug = entry;
   return Promise.allSettled([
@@ -54,7 +69,7 @@ self.addEventListener("push", (event) => {
         icon: "/icons/icon-192.png",
         badge: "/icons/icon-192.png",
         tag: data.tag,
-        data: { url: data.url ?? "/notifications" },
+        data: { url: resolveNotificationUrl(data.url) },
       }),
     ]),
   );
@@ -71,11 +86,15 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url ?? "/notifications";
+  const url = resolveNotificationUrl(event.notification.data?.url);
   event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
-      const matchingClient = windowClients.find((client) => new URL(client.url).pathname === url);
-      return matchingClient ? matchingClient.focus() : clients.openWindow(url);
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (windowClients) => {
+      const appClient = windowClients.find(isFamstagramClient);
+      if (appClient) {
+        if (typeof appClient.navigate === "function") await appClient.navigate(url);
+        return appClient.focus();
+      }
+      return clients.openWindow(url);
     }),
   );
 });

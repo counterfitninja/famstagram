@@ -137,7 +137,13 @@ export async function sendPushNotifications({
             expirationTime: subscription.expirationTime?.getTime() ?? null,
             keys: { p256dh: subscription.p256dh, auth: subscription.auth },
           },
-          JSON.stringify({ title, body, url: `/post/${postId}`, tag: `post-${postId}`, feedId }),
+          JSON.stringify({
+            title,
+            body,
+            url: `/post/${encodeURIComponent(postId)}`,
+            tag: `post-${postId}`,
+            feedId,
+          }),
           { TTL: 60, urgency: "high" },
         );
         pushDebug("sent notification", {
