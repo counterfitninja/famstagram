@@ -81,7 +81,8 @@ async function parseGpsCoordinates(
     if (rawExifCoordinates) {
       return { coordinates: rawExifCoordinates, source: "raw-exif" };
     }
-    const rawXmpCoordinates = extractRawXmpGps(xmpTags?._raw);
+    const rawXmpCoordinates =
+      extractRawXmpGpsFromJpeg(arrayBuffer) ?? extractRawXmpGps(xmpTags?._raw);
     if (rawXmpCoordinates) {
       return { coordinates: rawXmpCoordinates, source: "xmp-raw" };
     }
@@ -178,7 +179,10 @@ function readReference(refTag: any): string | undefined {
 function parseCoordinateTag(coordTag: any, ref?: string): number | null {
   if (coordTag === null || coordTag === undefined) return null;
 
-  const rawValue = typeof coordTag === "number" ? coordTag : coordTag.value ?? coordTag.description;
+  const rawValue =
+    typeof coordTag === "number" || typeof coordTag === "string"
+      ? coordTag
+      : coordTag.value ?? coordTag.description;
   let coordinate: number | null = null;
 
   if (typeof rawValue === "number") {
@@ -264,6 +268,89 @@ function extractRawXmpGps(raw: unknown): GpsCoordinates | null {
   return signedLatitude !== null && signedLongitude !== null
     ? toGpsCoordinates(signedLatitude, signedLongitude)
     : null;
+}
+
+const XMP_STANDARD_HEADER = "http://ns.adobe.com/xap/1.0/\u0000";
+const XMP_EXTENDED_HEADER = "http://ns.adobe.com/xmp/extension/\u0000";
+
+type XmpExtensionChunk = {
+  guid: string;
+  length: number;
+  offset: number;
+  data: string;
+};
+
+/** Reads XMP APP1 packets directly when an image parser does not expose them. */
+function extractRawXmpGpsFromJpeg(buffer: ArrayBuffer | SharedArrayBuffer): GpsCoordinates | null {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length < 10 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+
+  const extendedChunks: XmpExtensionChunk[] = [];
+  let offset = 2;
+  while (offset + 4 <= bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = bytes[offset + 1];
+    offset += 2;
+    if (marker === 0xda || marker === 0xd9) break;
+    if (marker === 0xff) continue;
+    const segmentLength = readBigEndianU16(bytes, offset);
+    if (segmentLength === null || segmentLength < 2 || offset + segmentLength > bytes.length) break;
+
+    const dataStart = offset + 2;
+    const dataEnd = offset + segmentLength;
+    if (marker === 0xe1) {
+      const data = bytes.slice(dataStart, dataEnd);
+      const header = readAscii(data, 0, Math.min(data.length, XMP_EXTENDED_HEADER.length));
+      if (header === XMP_STANDARD_HEADER) {
+        const raw = decodeXmpBytes(data.slice(XMP_STANDARD_HEADER.length));
+        const coordinates = extractRawXmpGps(raw);
+        if (coordinates) return coordinates;
+      } else if (header === XMP_EXTENDED_HEADER) {
+        const chunk = parseXmpExtensionChunk(data);
+        if (chunk) extendedChunks.push(chunk);
+      }
+    }
+    offset += segmentLength;
+  }
+
+  const grouped = new Map<string, XmpExtensionChunk[]>();
+  for (const chunk of extendedChunks) {
+    const chunks = grouped.get(chunk.guid) ?? [];
+    chunks.push(chunk);
+    grouped.set(chunk.guid, chunks);
+  }
+  for (const chunks of grouped.values()) {
+    chunks.sort((left, right) => left.offset - right.offset);
+    const expectedLength = chunks[0]?.length;
+    if (expectedLength === undefined || chunks[0].offset !== 0) continue;
+    const raw = chunks.map((chunk) => chunk.data).join("");
+    if (raw.length < expectedLength) continue;
+    const coordinates = extractRawXmpGps(raw.slice(0, expectedLength));
+    if (coordinates) return coordinates;
+  }
+  return null;
+}
+
+function parseXmpExtensionChunk(data: Uint8Array): XmpExtensionChunk | null {
+  if (data.length < XMP_EXTENDED_HEADER.length + 40) return null;
+  const guidStart = XMP_EXTENDED_HEADER.length;
+  const guid = readAscii(data, guidStart, 32);
+  const length = readBigEndianU32(data, guidStart + 32);
+  const offset = readBigEndianU32(data, guidStart + 36);
+  if (length === null || offset === null || offset > length) return null;
+  return {
+    guid,
+    length,
+    offset,
+    data: decodeXmpBytes(data.slice(guidStart + 40)),
+  };
+}
+
+function decodeXmpBytes(bytes: Uint8Array): string {
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
 }
 
 function extractXmpValue(raw: string, name: string): string | null {
@@ -432,6 +519,16 @@ function readExifAscii(
 function readBigEndianU16(bytes: Uint8Array, position: number): number | null {
   if (position < 0 || position + 2 > bytes.length) return null;
   return (bytes[position] << 8) | bytes[position + 1];
+}
+
+function readBigEndianU32(bytes: Uint8Array, position: number): number | null {
+  if (position < 0 || position + 4 > bytes.length) return null;
+  return (
+    ((bytes[position] << 24) >>> 0) |
+    (bytes[position + 1] << 16) |
+    (bytes[position + 2] << 8) |
+    bytes[position + 3]
+  ) >>> 0;
 }
 
 function readEndianU16(bytes: Uint8Array, position: number, littleEndian: boolean): number | null {
