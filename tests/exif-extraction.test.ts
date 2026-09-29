@@ -133,6 +133,20 @@ test("extracts GPS from ISO-BMFF location metadata shared by Google Photos", asy
   assert.deepEqual(coordinates, { latitude: 47.6062, longitude: -122.3321 });
 });
 
+test("does not treat signed numbers in JPEG bytes as ISO-BMFF GPS", async () => {
+  const jpeg = Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff, 0xe1]),
+    Buffer.from("+1.0000+2.0000+000.000/", "ascii"),
+    Buffer.from([0xff, 0xd9]),
+  ]);
+
+  const coordinates = await extractFirstGpsCoordinates([
+    new File([jpeg], "photo.jpg", { type: "image/jpeg" }),
+  ]);
+
+  assert.equal(coordinates, null);
+});
+
 test("extracts GPS when the GPS pointer is in an EXIF sub-IFD", async () => {
   const tiff = Buffer.alloc(280);
   tiff.write("II", 0, "ascii");
