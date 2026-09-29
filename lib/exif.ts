@@ -71,11 +71,13 @@ export async function extractGpsCoordinates(
   }
 }
 
-/** Extracts the first valid GPS location from a post's uploaded images. */
+/** Extracts the first valid GPS location from a post's uploaded media. */
 export async function extractFirstGpsCoordinates(files: readonly File[]): Promise<GpsCoordinates | null> {
   for (const file of files) {
-    if (!file.type.startsWith("image/")) continue;
     try {
+      // Do not trust the browser-provided MIME type here. Mobile share
+      // providers sometimes label HEIC/JPEG photos as video/mp4; the parser
+      // safely returns null for actual videos and unsupported files.
       const coordinates = await extractGpsCoordinates(await file.arrayBuffer());
       if (coordinates) return coordinates;
     } catch {

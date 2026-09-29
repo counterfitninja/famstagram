@@ -106,36 +106,37 @@ function inferMediaTypeFromBytes(bytes: Uint8Array): string | null {
       return "image/heic";
     }
     if (["avif", "avis"].includes(brand)) return "image/avif";
-    if (["isom", "iso2", "mp41", "mp42", "avc1", "3gp4", "3gp5", "3g2a", "mmp4", "qt  "].includes(brand)) {
+    if (["isom", "iso2", "mp41", "mp42", "avc1", "3gp4", "3gp5", "3g2a", "mmp4"].includes(brand)) {
       return "video/mp4";
     }
+    if (brand === "qt  ") return "video/quicktime";
   }
   if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return "video/webm";
   return null;
 }
 
-/** Repairs generic MIME metadata commonly supplied by Android share providers. */
+function isSupportedMediaType(type: string | null | undefined): type is (typeof IMAGE_TYPES)[number] | (typeof VIDEO_TYPES)[number] {
+  return Boolean(type && (IMAGE_TYPES.includes(type) || VIDEO_TYPES.includes(type)));
+}
+
+/** Repairs generic or misleading MIME metadata commonly supplied by mobile share providers. */
 export async function normalizeSharedMediaFile(file: File): Promise<File> {
   const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0];
   const extensionType = extension ? MEDIA_TYPE_BY_EXTENSION[extension] : undefined;
+  const suppliedType = file.type.toLowerCase();
+  const inferredType = inferMediaTypeFromBytes(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
 
-  // Some mobile pickers report HEIC/HEIF photos as video/mp4 because both use
-  // the ISO-BMFF container. Trust the photo extension for those files.
-  if (extensionType === "image/heic" || extensionType === "image/heif") {
-    return file.type === extensionType
-      ? file
-      : new File([file], file.name, { type: extensionType, lastModified: file.lastModified });
-  }
-  if (isImage(file) || isVideo(file)) return file;
+  // Content signatures take precedence over browser-provided MIME values. In
+  // particular, Android/iOS can label an HEIC photo as video/mp4 or omit its
+  // filename extension when it is shared from a photo library.
+  const normalizedType =
+    (isSupportedMediaType(inferredType) && inferredType) ||
+    MEDIA_TYPE_ALIASES[suppliedType] ||
+    extensionType ||
+    (isSupportedMediaType(suppliedType) && suppliedType);
 
-  const aliasType = MEDIA_TYPE_ALIASES[file.type.toLowerCase()];
-  const inferredType =
-    aliasType ??
-    (extension ? MEDIA_TYPE_BY_EXTENSION[extension] : undefined) ??
-    inferMediaTypeFromBytes(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
-
-  return inferredType && (IMAGE_TYPES.includes(inferredType) || VIDEO_TYPES.includes(inferredType))
-    ? new File([file], file.name, { type: inferredType, lastModified: file.lastModified })
+  return normalizedType && normalizedType !== suppliedType
+    ? new File([file], file.name, { type: normalizedType, lastModified: file.lastModified })
     : file;
 }
 

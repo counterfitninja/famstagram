@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { extractGpsCoordinates } from "../lib/exif";
+import { extractFirstGpsCoordinates, extractGpsCoordinates } from "../lib/exif";
 import { formatCoordinates, reverseGeocodeLocation } from "../lib/geocoding";
 import { latitudeSchema, longitudeSchema, mapQuerySchema } from "../lib/validation";
 
@@ -49,6 +49,67 @@ test("extractGpsCoordinates gracefully handles empty or non-image buffers", asyn
   const corruptJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10, 0x45, 0x78, 0x69, 0x66, 0x00]);
   const resultCorrupt = await extractGpsCoordinates(corruptJpeg);
   assert.equal(resultCorrupt, null);
+});
+
+test("extracts GPS from a photo whose mobile MIME type is video/mp4", async () => {
+  const bytes = new Uint8Array(140);
+  let offset = 0;
+  const write = (...values: number[]) => {
+    bytes.set(values, offset);
+    offset += values.length;
+  };
+  const writeU16 = (value: number) => write(value & 0xff, value >> 8);
+  const writeU32 = (value: number) =>
+    write(value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, (value >> 24) & 0xff);
+
+  write(0xff, 0xd8, 0xff, 0xe1);
+  const length = offset;
+  write(0, 0, ...Array.from(Buffer.from("Exif\0\0")));
+  write(0x49, 0x49, 0x2a, 0, 8, 0, 0, 0);
+  writeU16(1);
+  writeU16(0x8825);
+  writeU16(4);
+  writeU32(1);
+  writeU32(26);
+  writeU32(0);
+  writeU16(4);
+  writeU16(1);
+  writeU16(2);
+  writeU32(2);
+  write(0x4e, 0, 0, 0);
+  writeU16(2);
+  writeU16(5);
+  writeU32(3);
+  writeU32(80);
+  writeU16(3);
+  writeU16(2);
+  writeU32(2);
+  write(0x57, 0, 0, 0);
+  writeU16(4);
+  writeU16(5);
+  writeU32(3);
+  writeU32(104);
+  writeU32(0);
+  while (offset < 92) write(0);
+  writeU32(47);
+  writeU32(1);
+  writeU32(36);
+  writeU32(1);
+  writeU32(222);
+  writeU32(10);
+  writeU32(122);
+  writeU32(1);
+  writeU32(20);
+  writeU32(1);
+  writeU32(0);
+  writeU32(1);
+  bytes[length] = (offset - length) >> 8;
+  bytes[length + 1] = (offset - length) & 0xff;
+
+  const file = new File([bytes], "photo", { type: "video/mp4" });
+  const coordinates = await extractFirstGpsCoordinates([file]);
+
+  assert.deepEqual(coordinates, { latitude: 47.606167, longitude: -122.333333 });
 });
 
 test("reverseGeocodeLocation returns coordinate string as fallback when network is unreachable or times out", async () => {
