@@ -14,7 +14,7 @@ export interface GpsCoordinates {
  */
 type GpsParseResult = {
   coordinates: GpsCoordinates | null;
-  source?: "expanded" | "exif" | "xmp" | "raw-exif" | "xmp-raw";
+  source?: "expanded" | "exif" | "xmp" | "raw-exif" | "xmp-raw" | "iso6709";
   error?: string;
 };
 
@@ -34,10 +34,16 @@ async function parseGpsCoordinates(
       return { coordinates: null, error: "unsupported-buffer" };
     }
 
-    const tags = ExifReader.load(arrayBuffer, {
-      expanded: true,
-      domParser: xmlParser,
-    }) as unknown as Record<string, any>;
+    let tags: Record<string, any> = {};
+    try {
+      tags = ExifReader.load(arrayBuffer, {
+        expanded: true,
+        domParser: xmlParser,
+      }) as unknown as Record<string, any>;
+    } catch {
+      // ISO-BMFF media often cannot be parsed as an image by ExifReader;
+      // continue so its QuickTime location metadata can still be inspected.
+    }
 
     // ExifReader's expanded GPS group is the most reliable representation.
     const expandedGps = tags.gps;
@@ -91,6 +97,13 @@ async function parseGpsCoordinates(
       extractRawXmpGpsFromJpeg(arrayBuffer) ?? extractRawXmpGps(xmpTags?._raw);
     if (rawXmpCoordinates) {
       return { coordinates: rawXmpCoordinates, source: "xmp-raw" };
+    }
+
+    // QuickTime/ISO-BMFF media (including videos and motion-photo payloads)
+    // stores location as an ISO 6709 string, not an EXIF GPS IFD.
+    const iso6709Coordinates = extractIso6709Gps(arrayBuffer);
+    if (iso6709Coordinates) {
+      return { coordinates: iso6709Coordinates, source: "iso6709" };
     }
 
     return { coordinates: null };
@@ -287,6 +300,20 @@ function findMetadataTag(tags: unknown, suffix: string): unknown {
 
 function normalizeMetadataKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function extractIso6709Gps(buffer: ArrayBuffer | SharedArrayBuffer): GpsCoordinates | null {
+  const raw = new TextDecoder("utf-8", { fatal: false }).decode(new Uint8Array(buffer));
+  // QuickTime location metadata is commonly written as
+  // "+latitude-longitude+altitude/" in ©xyz or location.ISO6709 atoms.
+  const matches = raw.matchAll(
+    /([+-]\d{1,3}(?:\.\d+)?)([+-]\d{1,3}(?:\.\d+)?)(?:[+-]\d{1,3}(?:\.\d+)?)?\/?/g,
+  );
+  for (const match of matches) {
+    const coordinates = toGpsCoordinates(Number(match[1]), Number(match[2]));
+    if (coordinates) return coordinates;
+  }
+  return null;
 }
 
 function extractRawXmpGps(raw: unknown): GpsCoordinates | null {

@@ -112,6 +112,27 @@ test("extracts GPS from a photo whose mobile MIME type is video/mp4", async () =
   assert.deepEqual(coordinates, { latitude: 47.606167, longitude: -122.333333 });
 });
 
+test("extracts GPS from ISO-BMFF location metadata shared by Google Photos", async () => {
+  const makeBox = (type: Uint8Array, payload: Uint8Array) => {
+    const box = Buffer.alloc(8 + payload.length);
+    box.writeUInt32BE(box.length, 0);
+    box.set(type, 4);
+    box.set(payload, 8);
+    return box;
+  };
+  const ftyp = makeBox(Buffer.from("ftyp", "ascii"), Buffer.from("isom\0\0\0\0", "ascii"));
+  const location = Buffer.from("+47.6062-122.3321+000.000/\0", "ascii");
+  const xyz = makeBox(Uint8Array.from([0xa9, 0x78, 0x79, 0x7a]), location);
+  const udta = makeBox(Buffer.from("udta", "ascii"), xyz);
+  const mp4 = Buffer.concat([ftyp, makeBox(Buffer.from("moov", "ascii"), udta)]);
+
+  const coordinates = await extractFirstGpsCoordinates([
+    new File([mp4], "shared-video", { type: "video/mp4" }),
+  ]);
+
+  assert.deepEqual(coordinates, { latitude: 47.6062, longitude: -122.3321 });
+});
+
 test("extracts GPS when the GPS pointer is in an EXIF sub-IFD", async () => {
   const tiff = Buffer.alloc(280);
   tiff.write("II", 0, "ascii");
