@@ -50,7 +50,14 @@ export const mapQuerySchema = z.object({
 
 // ---------- media ----------
 
-export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+export const IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/heic",
+  "image/heif",
+];
 export const VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 
 export const MAX_IMAGES_PER_POST = 10;
@@ -74,6 +81,8 @@ const MEDIA_TYPE_ALIASES: Record<string, string> = {
 
 const MEDIA_TYPE_BY_EXTENSION: Record<string, string> = {
   ".gif": "image/gif",
+  ".heic": "image/heic",
+  ".heif": "image/heif",
   ".jpeg": "image/jpeg",
   ".jpg": "image/jpeg",
   ".mov": "video/quicktime",
@@ -91,24 +100,63 @@ function inferMediaTypeFromBytes(bytes: Uint8Array): string | null {
     String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
     String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
   ) return "image/webp";
-  if (String.fromCharCode(...bytes.slice(4, 8)) === "ftyp") return "video/mp4";
+  if (String.fromCharCode(...bytes.slice(4, 8)) === "ftyp") {
+    const brand = String.fromCharCode(...bytes.slice(8, 12)).toLowerCase();
+    if (["heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs", "mif1"].includes(brand)) {
+      return "image/heic";
+    }
+    if (["avif", "avis"].includes(brand)) return "image/avif";
+    if (["isom", "iso2", "mp41", "mp42", "avc1", "3gp4", "3gp5", "3g2a", "mmp4"].includes(brand)) {
+      return "video/mp4";
+    }
+    if (brand === "qt  ") return "video/quicktime";
+  }
   if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return "video/webm";
   return null;
 }
 
-/** Repairs generic MIME metadata commonly supplied by Android share providers. */
+function isSupportedMediaType(type: string | null | undefined): type is (typeof IMAGE_TYPES)[number] | (typeof VIDEO_TYPES)[number] {
+  return Boolean(type && (IMAGE_TYPES.includes(type) || VIDEO_TYPES.includes(type)));
+}
+
+export interface MediaFileDiagnostics {
+  size: number;
+  suppliedType: string | null;
+  extension: string | null;
+  inferredType: string | null;
+  headerHex: string;
+}
+
+/** Returns non-sensitive upload metadata useful for diagnosing mobile MIME issues. */
+export async function inspectMediaFile(file: File): Promise<MediaFileDiagnostics> {
+  const bytes = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] ?? null;
+  return {
+    size: file.size,
+    suppliedType: file.type || null,
+    extension,
+    inferredType: inferMediaTypeFromBytes(bytes),
+    headerHex: Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(""),
+  };
+}
+
+/** Repairs generic or misleading MIME metadata commonly supplied by mobile share providers. */
 export async function normalizeSharedMediaFile(file: File): Promise<File> {
-  if (isImage(file) || isVideo(file)) return file;
+  const diagnostics = await inspectMediaFile(file);
+  const extensionType = diagnostics.extension ? MEDIA_TYPE_BY_EXTENSION[diagnostics.extension] : undefined;
+  const suppliedType = file.type.toLowerCase();
 
-  const aliasType = MEDIA_TYPE_ALIASES[file.type.toLowerCase()];
-  const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0];
-  const inferredType =
-    aliasType ??
-    (extension ? MEDIA_TYPE_BY_EXTENSION[extension] : undefined) ??
-    inferMediaTypeFromBytes(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
+  // Content signatures take precedence over browser-provided MIME values. In
+  // particular, Android/iOS can label an HEIC photo as video/mp4 or omit its
+  // filename extension when it is shared from a photo library.
+  const normalizedType =
+    (isSupportedMediaType(diagnostics.inferredType) && diagnostics.inferredType) ||
+    MEDIA_TYPE_ALIASES[suppliedType] ||
+    extensionType ||
+    (isSupportedMediaType(suppliedType) && suppliedType);
 
-  return inferredType
-    ? new File([file], file.name, { type: inferredType, lastModified: file.lastModified })
+  return normalizedType && normalizedType !== suppliedType
+    ? new File([file], file.name, { type: normalizedType, lastModified: file.lastModified })
     : file;
 }
 
@@ -123,7 +171,7 @@ export function validateMediaFiles(files: { type: string; size: number }[]): { e
   const images = files.filter(isImage);
   const videos = files.filter(isVideo);
   if (images.length + videos.length !== files.length) {
-    return { error: "Unsupported file type. Use JPG, PNG, WebP or GIF images, or an MP4/WebM/MOV video." };
+    return { error: "Unsupported file type. Use JPG, PNG, WebP, GIF, HEIC or HEIF images, or an MP4/WebM/MOV video." };
   }
   if (videos.length > 0) {
     if (files.length > 1) {

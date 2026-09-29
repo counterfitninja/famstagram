@@ -8,6 +8,7 @@ import {
   MAX_VIDEO_SECONDS,
   VIDEO_TYPES,
   isVideo,
+  normalizeSharedMediaFile,
   validateMediaFiles,
 } from "@/lib/validation";
 
@@ -129,7 +130,7 @@ export default function UploadForm({
   async function onSelect(list: FileList | null) {
     setError(null);
     if (!list || list.length === 0) return;
-    const selected = Array.from(list);
+    const selected = await Promise.all(Array.from(list).map(normalizeSharedMediaFile));
 
     const video = selected.find((f) => isVideo(f));
     // A post is either one video or a set of images, so a video always
@@ -236,7 +237,7 @@ export default function UploadForm({
         <input
           id="media-library"
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,video/mp4,video/webm,video/quicktime"
           multiple
           className="hidden"
           onChange={(e) => {
@@ -244,10 +245,11 @@ export default function UploadForm({
             e.target.value = ""; // allow picking the same file again
           }}
         />
+        {/* Avoid image/* because some mobile browsers strip GPS EXIF from wildcard inputs. */}
         <input
           id="media-camera"
           type="file"
-          accept="image/*,video/*"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,video/mp4,video/webm,video/quicktime"
           capture="environment"
           className="hidden"
           onChange={(e) => {

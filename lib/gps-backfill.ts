@@ -9,6 +9,18 @@ export interface GpsBackfillResult {
   unchanged: number;
 }
 
+const IMAGE_KEY_SUFFIXES = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"];
+
+const mediaWithPotentialGpsFilter = {
+  OR: [
+    { mimeType: { startsWith: "image/" } },
+    // Older mobile HEIC uploads could be mislabeled video/mp4 because HEIC
+    // uses the same ISO-BMFF container. Include those files for recovery.
+    { mimeType: "video/mp4" },
+    ...IMAGE_KEY_SUFFIXES.map((suffix) => ({ key: { endsWith: suffix } })),
+  ],
+};
+
 async function toBuffer(body: Buffer | ReadableStream): Promise<Buffer> {
   if (Buffer.isBuffer(body)) return body;
 
@@ -29,11 +41,11 @@ async function toBuffer(body: Buffer | ReadableStream): Promise<Buffer> {
  */
 export async function backfillMissingGpsCoordinates(limit = 500): Promise<GpsBackfillResult> {
   const posts = await db.post.findMany({
-    where: { latitude: null, media: { some: { mimeType: { startsWith: "image/" } } } },
+    where: { OR: [{ latitude: null }, { longitude: null }], media: { some: mediaWithPotentialGpsFilter } },
     select: {
       id: true,
       media: {
-        where: { mimeType: { startsWith: "image/" } },
+        where: mediaWithPotentialGpsFilter,
         select: { key: true },
         orderBy: { order: "asc" },
       },

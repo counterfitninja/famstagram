@@ -1,4 +1,4 @@
-self.__famstagramSwVersion = "2026-09-23-native-push-v1";
+self.__famstagramSwVersion = "2026-09-29-native-push-v2";
 
 const FAMSTAGRAM_ORIGIN_PATH = "/";
 const ICON_PATH = "/icons/icon-192.png";

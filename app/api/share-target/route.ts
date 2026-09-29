@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { extractFirstGpsCoordinatesWithDiagnostics } from "@/lib/exif";
+import { reverseGeocodeLocation } from "@/lib/geocoding";
 import { createPostNotifications } from "@/lib/notifications";
 import { getSession } from "@/lib/session";
 import { saveMedia } from "@/lib/storage";
 import { toRequestUrl } from "@/lib/request-url";
-import { captionSchema, normalizeSharedMediaFile, validateMediaFiles } from "@/lib/validation";
+import { logUploadDebug, isUploadDebugEnabled } from "@/lib/upload-debug";
+import {
+  captionSchema,
+  inspectMediaFile,
+  normalizeSharedMediaFile,
+  validateMediaFiles,
+} from "@/lib/validation";
 
 /**
  * POST /api/share-target — Web Share Target endpoint declared in the manifest.
@@ -26,9 +34,17 @@ export async function POST(req: Request) {
   }
 
   const sharedFiles = form.getAll("media").filter((f): f is File => f instanceof File && f.size > 0);
+  const rawDiagnostics = isUploadDebugEnabled()
+    ? await Promise.all(sharedFiles.map(inspectMediaFile))
+    : [];
   const files = await Promise.all(sharedFiles.map(normalizeSharedMediaFile));
+  logUploadDebug("media-received", {
+    endpoint: "/api/share-target",
+    files: rawDiagnostics.map((file, index) => ({ ...file, normalizedType: files[index]?.type ?? null })),
+  });
   const mediaCheck = validateMediaFiles(files);
   if (mediaCheck.error) {
+    logUploadDebug("media-rejected", { endpoint: "/api/share-target", error: mediaCheck.error });
     return NextResponse.redirect(
       toRequestUrl(req, `/create?error=${encodeURIComponent(mediaCheck.error)}`),
       303,
@@ -54,8 +70,36 @@ export async function POST(req: Request) {
     );
   }
 
+  const gpsResult = await extractFirstGpsCoordinatesWithDiagnostics(files);
+  logUploadDebug("gps-extraction", {
+    endpoint: "/api/share-target",
+    coordinatesFound: gpsResult.coordinates !== null,
+    files: gpsResult.files,
+  });
+  const coordinates = gpsResult.coordinates;
+  const locationName = coordinates
+    ? await reverseGeocodeLocation(coordinates.latitude, coordinates.longitude)
+    : null;
+  logUploadDebug("location-resolved", {
+    endpoint: "/api/share-target",
+    coordinatesFound: coordinates !== null,
+    locationNameFound: locationName !== null,
+  });
+
   const post = await db.post.create({
-    data: { authorId: session.userId, caption, feedId },
+    data: {
+      authorId: session.userId,
+      caption,
+      feedId,
+      latitude: coordinates?.latitude ?? null,
+      longitude: coordinates?.longitude ?? null,
+      locationName,
+    },
+  });
+  logUploadDebug("post-created", {
+    endpoint: "/api/share-target",
+    postId: post.id,
+    gpsStored: coordinates !== null,
   });
 
   try {

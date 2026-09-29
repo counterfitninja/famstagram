@@ -246,6 +246,16 @@
       "user_editable": true,
       "rules": "required|string|in:true,false",
       "field_type": "text"
+    },
+    {
+      "name": "Upload Debug Logging",
+      "description": "Set to true temporarily to log upload MIME detection and GPS extraction diagnostics. GPS coordinates and filenames are omitted.",
+      "env_variable": "UPLOAD_DEBUG",
+      "default_value": "false",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|in:true,false",
+      "field_type": "text"
     }
   ]
 }
