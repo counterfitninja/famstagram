@@ -58,8 +58,10 @@ async function parseGpsCoordinates(
     // camera exporters expose human-readable keys such as "GPS Latitude".
     // Some camera apps also omit the reference tags, so parse the raw values too.
     const exifTags = tags.exif ?? tags;
-    const latitudeTag = findMetadataTag(exifTags, "gpslatitude");
-    const longitudeTag = findMetadataTag(exifTags, "gpslongitude");
+    const latitudeTag =
+      findMetadataTag(exifTags, "gpslatitude") ?? findMetadataTag(exifTags, "latitude");
+    const longitudeTag =
+      findMetadataTag(exifTags, "gpslongitude") ?? findMetadataTag(exifTags, "longitude");
     const latitudeRefTag = findMetadataTag(exifTags, "gpslatituderef");
     const longitudeRefTag = findMetadataTag(exifTags, "gpslongituderef");
     const latitude = parseCoordinateTag(latitudeTag, readReference(latitudeRefTag));
@@ -583,7 +585,9 @@ function readExifIfd(
     const type = readEndianU16(bytes, entryOffset + 2, littleEndian);
     const itemCount = readEndianU32(bytes, entryOffset + 4, littleEndian);
     if (tag === null || type === null || itemCount === null) continue;
-    const typeSize = [0, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8][type] ?? 0;
+    // TIFF type 13 (IFD) stores an offset just like type 4 (LONG). Some
+    // mobile exporters use it for GPSInfoIFDPointer and related links.
+    const typeSize = [0, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8, 4][type] ?? 0;
     const totalSize = typeSize * itemCount;
     const valueOffset = totalSize <= 4
       ? entryOffset + 8
@@ -611,7 +615,7 @@ function readExifUnsignedValues(
   entry: RawExifEntry,
   littleEndian: boolean,
 ): number[] {
-  if (entry.type !== 3 && entry.type !== 4) return [];
+  if (entry.type !== 3 && entry.type !== 4 && entry.type !== 13) return [];
   const values: number[] = [];
   const itemSize = entry.type === 3 ? 2 : 4;
   for (let index = 0; index < entry.count; index += 1) {

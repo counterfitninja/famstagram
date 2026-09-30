@@ -147,6 +147,65 @@ test("does not treat signed numbers in JPEG bytes as ISO-BMFF GPS", async () => 
   assert.equal(coordinates, null);
 });
 
+test("extracts GPS when EXIF uses TIFF IFD pointer types", async () => {
+  const tiff = Buffer.alloc(280);
+  tiff.write("II", 0, "ascii");
+  tiff.writeUInt16LE(42, 2);
+  tiff.writeUInt32LE(8, 4);
+
+  // IFD0 -> GPS IFD, using TIFF type 13 (IFD) for the pointer.
+  tiff.writeUInt16LE(1, 8);
+  tiff.writeUInt16LE(0x8825, 10);
+  tiff.writeUInt16LE(13, 12);
+  tiff.writeUInt32LE(1, 14);
+  tiff.writeUInt32LE(100, 18);
+
+  const gpsOffset = 100;
+  tiff.writeUInt16LE(4, gpsOffset);
+  tiff.writeUInt16LE(1, gpsOffset + 2);
+  tiff.writeUInt16LE(2, gpsOffset + 4);
+  tiff.writeUInt32LE(2, gpsOffset + 6);
+  tiff.write("N\0", gpsOffset + 10, "ascii");
+  tiff.writeUInt16LE(2, gpsOffset + 14);
+  tiff.writeUInt16LE(5, gpsOffset + 16);
+  tiff.writeUInt32LE(3, gpsOffset + 18);
+  tiff.writeUInt32LE(220, gpsOffset + 22);
+  tiff.writeUInt16LE(3, gpsOffset + 26);
+  tiff.writeUInt16LE(2, gpsOffset + 28);
+  tiff.writeUInt32LE(2, gpsOffset + 30);
+  tiff.write("W\0", gpsOffset + 34, "ascii");
+  tiff.writeUInt16LE(4, gpsOffset + 38);
+  tiff.writeUInt16LE(5, gpsOffset + 40);
+  tiff.writeUInt32LE(3, gpsOffset + 42);
+  tiff.writeUInt32LE(244, gpsOffset + 46);
+
+  const writeRational = (offset: number, value: number) => {
+    tiff.writeUInt32LE(value, offset);
+    tiff.writeUInt32LE(1, offset + 4);
+  };
+  writeRational(220, 47);
+  writeRational(228, 36);
+  writeRational(236, 22);
+  writeRational(244, 122);
+  writeRational(252, 20);
+  writeRational(260, 0);
+
+  const exif = Buffer.concat([Buffer.from("Exif\0\0", "ascii"), tiff]);
+  const segmentLength = Buffer.alloc(2);
+  segmentLength.writeUInt16BE(exif.length + 2);
+  const jpeg = Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff, 0xe1]),
+    segmentLength,
+    exif,
+    Buffer.from([0xff, 0xd9]),
+  ]);
+
+  const coordinates = await extractFirstGpsCoordinates([
+    new File([jpeg], "photo.jpg", { type: "image/jpeg" }),
+  ]);
+  assert.deepEqual(coordinates, { latitude: 47.606111, longitude: -122.333333 });
+});
+
 test("extracts GPS when the GPS pointer is in an EXIF sub-IFD", async () => {
   const tiff = Buffer.alloc(280);
   tiff.write("II", 0, "ascii");
