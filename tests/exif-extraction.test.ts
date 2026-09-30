@@ -3,9 +3,20 @@ import test from "node:test";
 
 import { extractFirstGpsCoordinates, extractGpsCoordinates } from "../lib/exif";
 import { formatCoordinates, reverseGeocodeLocation } from "../lib/geocoding";
-import { latitudeSchema, longitudeSchema, mapQuerySchema } from "../lib/validation";
+import {
+  latitudeSchema,
+  longitudeSchema,
+  mapQuerySchema,
+  parseGpsFormCoordinates,
+} from "../lib/validation";
 
 test("coordinate validation schemas enforce WGS84 bounds", () => {
+  assert.deepEqual(
+    parseGpsFormCoordinates("51.2976222222222", "-2.57567222222222"),
+    { latitude: 51.2976222222222, longitude: -2.57567222222222 },
+  );
+  assert.equal(parseGpsFormCoordinates("91", "0"), null);
+  assert.equal(parseGpsFormCoordinates(null, "0"), null);
   assert.equal(latitudeSchema.safeParse(47.6062).success, true);
   assert.equal(latitudeSchema.safeParse(-90).success, true);
   assert.equal(latitudeSchema.safeParse(90).success, true);

@@ -11,6 +11,7 @@ import {
   captionSchema,
   inspectMediaFile,
   normalizeSharedMediaFile,
+  parseGpsFormCoordinates,
   validateMediaFiles,
 } from "@/lib/validation";
 
@@ -82,7 +83,22 @@ export async function POST(req: Request) {
     coordinatesFound: gpsResult.coordinates !== null,
     files: gpsResult.files,
   });
-  const coordinates = gpsResult.coordinates;
+  const clientCoordinates = parseGpsFormCoordinates(
+    form.get("clientLatitude"),
+    form.get("clientLongitude"),
+  );
+  const coordinates = gpsResult.coordinates ?? clientCoordinates;
+  const coordinatesSource = gpsResult.coordinates
+    ? "server-file"
+    : clientCoordinates
+      ? "client-file"
+      : null;
+  logUploadDebug("gps-coordinates-resolved", {
+    endpoint: "/api/share-target",
+    serverCoordinatesFound: gpsResult.coordinates !== null,
+    clientCoordinatesFound: clientCoordinates !== null,
+    coordinatesSource,
+  });
   const locationName = coordinates
     ? await reverseGeocodeLocation(coordinates.latitude, coordinates.longitude)
     : null;
