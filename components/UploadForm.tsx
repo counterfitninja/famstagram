@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { extractFirstGpsCoordinates } from "@/lib/exif";
 import { btnPrimary, inputCls } from "@/lib/ui";
 import {
   MAX_IMAGES_PER_POST,
@@ -171,6 +172,14 @@ export default function UploadForm({
       form.append("caption", caption);
       if (feedId) form.append("feedId", feedId);
       for (const f of files) form.append("media", f);
+
+      // Some mobile browsers/photo providers rewrite the JPEG while sending it,
+      // so capture GPS from the browser-selected bytes as a server fallback.
+      const clientCoordinates = await extractFirstGpsCoordinates(files);
+      if (clientCoordinates) {
+        form.append("clientLatitude", String(clientCoordinates.latitude));
+        form.append("clientLongitude", String(clientCoordinates.longitude));
+      }
 
       const res = await fetch("/api/posts", { method: "POST", body: form });
       if (!res.ok) {

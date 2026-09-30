@@ -55,6 +55,8 @@ Copy `.env.example` to `.env` and adjust:
 | `PUSH_DEBUG` | Set to `true` temporarily to log masked Web Push diagnostics |
 | `UPLOAD_DEBUG` | Set to `true` temporarily to log upload MIME detection and GPS extraction diagnostics; coordinates and filenames are omitted. Entries include the build commit SHA and uploaded file SHA-256 |
 
+The browser upload form extracts GPS from the file selected on the device before submitting it. If a mobile browser or photo provider rewrites the upload and removes GPS before the server receives it, the server uses those validated client coordinates as a fallback for the post/map. The optimized media file may still omit EXIF GPS by design.
+
 ### Push notifications
 
 Generate a VAPID key pair once per deployed environment, then add it to `.env` (or your hosting provider's environment settings):

@@ -10,6 +10,7 @@ import {
   captionSchema,
   inspectMediaFile,
   normalizeSharedMediaFile,
+  parseGpsFormCoordinates,
   validateMediaFiles,
 } from "@/lib/validation";
 
@@ -93,7 +94,22 @@ export async function POST(req: Request) {
     coordinatesFound: gpsResult.coordinates !== null,
     files: gpsResult.files,
   });
-  const coords = gpsResult.coordinates;
+  const clientCoordinates = parseGpsFormCoordinates(
+    form.get("clientLatitude"),
+    form.get("clientLongitude"),
+  );
+  const coords = gpsResult.coordinates ?? clientCoordinates;
+  const coordinatesSource = gpsResult.coordinates
+    ? "server-file"
+    : clientCoordinates
+      ? "client-file"
+      : null;
+  logUploadDebug("gps-coordinates-resolved", {
+    endpoint: "/api/posts",
+    serverCoordinatesFound: gpsResult.coordinates !== null,
+    clientCoordinatesFound: clientCoordinates !== null,
+    coordinatesSource,
+  });
   const latitude = coords?.latitude ?? null;
   const longitude = coords?.longitude ?? null;
   const locationName = coords

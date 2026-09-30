@@ -40,6 +40,21 @@ export const latitudeSchema = z.number().min(-90, "Latitude must be between -90 
 export const longitudeSchema = z.number().min(-180, "Longitude must be between -180 and 180").max(180, "Longitude must be between -180 and 180");
 export const locationNameSchema = z.string().trim().max(200, "Location name is limited to 200 characters").optional().nullable();
 
+/** Parse optional coordinates supplied by a browser before upload metadata is rewritten. */
+export function parseGpsFormCoordinates(latitude: FormDataEntryValue | null, longitude: FormDataEntryValue | null) {
+  if (
+    typeof latitude !== "string" ||
+    typeof longitude !== "string" ||
+    latitude.trim() === "" ||
+    longitude.trim() === ""
+  ) return null;
+  const result = z.object({ latitude: latitudeSchema, longitude: longitudeSchema }).safeParse({
+    latitude: Number(latitude),
+    longitude: Number(longitude),
+  });
+  return result.success ? result.data : null;
+}
+
 export const MAP_LIMIT_DEFAULT = 50;
 export const MAP_LIMIT_PRESETS = [25, 50, 100, 250] as const;
 
