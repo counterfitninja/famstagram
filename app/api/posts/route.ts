@@ -5,7 +5,7 @@ import { reverseGeocodeLocation } from "@/lib/geocoding";
 import { createPostNotifications } from "@/lib/notifications";
 import { getSession } from "@/lib/session";
 import { saveMedia } from "@/lib/storage";
-import { logUploadDebug, isUploadDebugEnabled } from "@/lib/upload-debug";
+import { hashUploadFile, logUploadDebug, isUploadDebugEnabled } from "@/lib/upload-debug";
 import {
   captionSchema,
   inspectMediaFile,
@@ -43,7 +43,13 @@ export async function POST(req: Request) {
   // because uploads can also come from the PWA share target or another client.
   const uploadedFiles = form.getAll("media").filter((f): f is File => f instanceof File);
   const rawDiagnostics = isUploadDebugEnabled()
-    ? await Promise.all(uploadedFiles.map(inspectMediaFile))
+    ? await Promise.all(uploadedFiles.map(async (file) => {
+        const [diagnostics, sha256] = await Promise.all([
+          inspectMediaFile(file),
+          hashUploadFile(file),
+        ]);
+        return { ...diagnostics, sha256 };
+      }))
     : [];
   const files = await Promise.all(uploadedFiles.map(normalizeSharedMediaFile));
   logUploadDebug("media-received", {
