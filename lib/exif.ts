@@ -206,9 +206,11 @@ function parseCoordinateTag(coordTag: any, ref?: string): number | null {
   if (coordTag === null || coordTag === undefined) return null;
 
   const rawValue =
-    typeof coordTag === "number" || typeof coordTag === "string"
+    typeof coordTag === "number" || typeof coordTag === "string" || Array.isArray(coordTag)
       ? coordTag
-      : coordTag.value ?? coordTag.description;
+      : coordTag && typeof coordTag === "object"
+        ? coordTag.value ?? coordTag.description
+        : coordTag;
   let coordinate: number | null = null;
 
   if (typeof rawValue === "number") {
@@ -479,6 +481,16 @@ function extractRawExifGps(buffer: ArrayBuffer | SharedArrayBuffer): GpsCoordina
     }
     offset += segmentLength;
   }
+
+  // A few mobile share providers emit an incorrect APP1 length. The EXIF
+  // packet is still present, so recover it by scanning for the unambiguous
+  // EXIF signature instead of trusting the broken JPEG segment table.
+  const exifHeader = "Exif\u0000\u0000";
+  for (let index = 2; index + exifHeader.length + 8 <= bytes.length; index += 1) {
+    if (readAscii(bytes, index, exifHeader.length) !== exifHeader) continue;
+    const coordinates = parseExifTiffGps(bytes, index + exifHeader.length);
+    if (coordinates) return coordinates;
+  }
   return null;
 }
 
@@ -504,6 +516,14 @@ function parseExifTiffGps(bytes: Uint8Array, tiffStart: number): GpsCoordinates 
     visitedIfdOffsets.add(ifdOffset);
 
     const ifd = readExifIfd(bytes, tiffStart, tiffStart + ifdOffset, littleEndian);
+    const nextIfdOffset = readExifNextIfdOffset(
+      bytes,
+      tiffStart + ifdOffset,
+      littleEndian,
+    );
+    if (nextIfdOffset !== null && nextIfdOffset > 0 && !visitedIfdOffsets.has(nextIfdOffset)) {
+      pendingIfdOffsets.push(nextIfdOffset);
+    }
     const gpsPointer = ifd.get(0x8825);
     if (gpsPointer) {
       const gpsOffset = readExifUnsignedValue(bytes, gpsPointer, littleEndian);
@@ -536,6 +556,16 @@ function parseExifTiffGps(bytes: Uint8Array, tiffStart: number): GpsCoordinates 
     }
   }
   return null;
+}
+
+function readExifNextIfdOffset(
+  bytes: Uint8Array,
+  ifdOffset: number,
+  littleEndian: boolean,
+): number | null {
+  const count = readEndianU16(bytes, ifdOffset, littleEndian);
+  if (count === null || count > 512) return null;
+  return readEndianU32(bytes, ifdOffset + 2 + count * 12, littleEndian);
 }
 
 function readExifIfd(
