@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { extractGpsCoordinates } from "@/lib/exif";
 import { reverseGeocodeLocation } from "@/lib/geocoding";
-import { getMedia } from "@/lib/storage";
+import { getMedia, streamToBuffer } from "@/lib/storage";
 
 export interface GpsBackfillResult {
   scanned: number;
@@ -22,16 +22,7 @@ const mediaWithPotentialGpsFilter = {
 };
 
 async function toBuffer(body: Buffer | ReadableStream): Promise<Buffer> {
-  if (Buffer.isBuffer(body)) return body;
-
-  const chunks: Uint8Array[] = [];
-  const reader = body.getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) chunks.push(value);
-  }
-  return Buffer.concat(chunks);
+  return streamToBuffer(body);
 }
 
 /**

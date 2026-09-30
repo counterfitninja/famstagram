@@ -29,6 +29,7 @@ export default function UploadForm({
   const captionRef = useRef<HTMLTextAreaElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+  const [hasGps, setHasGps] = useState<(boolean | null)[]>([]);
   const [caption, setCaption] = useState("");
   const [feedId, setFeedId] = useState<string>(defaultFeedId ?? feeds[0]?.feedId ?? "");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -44,6 +45,22 @@ export default function UploadForm({
     const urls = files.map((f) => URL.createObjectURL(f));
     setPreviews(urls);
     return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [files]);
+
+  // Check each selected photo for GPS so users can see if their picker kept it.
+  useEffect(() => {
+    let cancelled = false;
+    setHasGps(files.map(() => null));
+    Promise.all(
+      files.map((f) =>
+        isVideo(f) ? Promise.resolve(null) : extractFirstGpsCoordinates([f]).then((c) => c !== null),
+      ),
+    ).then((flags) => {
+      if (!cancelled) setHasGps(flags);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [files]);
 
   // Fetch @mention suggestions with a short debounce while typing.
@@ -243,10 +260,17 @@ export default function UploadForm({
             </label>
           </div>
         </div>
+        {/*
+          The trailing non-media type is deliberate: when every accepted type is
+          image/video, Android Chrome opens the system Photo Picker, which always
+          redacts GPS. Including another type forces the regular file chooser,
+          which returns the original bytes (normalizeSharedMediaFile re-detects
+          the real type from the file contents).
+        */}
         <input
           id="media-library"
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,video/mp4,video/webm,video/quicktime"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,video/mp4,video/webm,video/quicktime,application/octet-stream"
           multiple
           className="hidden"
           onChange={(e) => {
@@ -283,16 +307,28 @@ export default function UploadForm({
                 className="aspect-square w-full rounded-lg object-cover"
               />
             ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={src}
-                src={src}
-                alt=""
-                className="aspect-square w-full rounded-lg object-cover"
-              />
+              <div key={src} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt="" className="aspect-square w-full rounded-lg object-cover" />
+                {hasGps[i] !== null && hasGps[i] !== undefined && (
+                  <span
+                    className={`absolute bottom-1 left-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-white ${
+                      hasGps[i] ? "bg-emerald-600/90" : "bg-neutral-800/70"
+                    }`}
+                  >
+                    {hasGps[i] ? "📍 Location" : "No location"}
+                  </span>
+                )}
+              </div>
             ),
           )}
         </div>
+      )}
+      {hasGps.some((flag) => flag === false) && !hasGps.some((flag) => flag === true) && (
+        <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-700">
+          Your phone removed the location from these photos. Try sharing them to Famstagram from
+          your Gallery/Photos app instead, or set the location on the post after uploading.
+        </p>
       )}
 
       <div>

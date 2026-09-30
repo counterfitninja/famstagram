@@ -49,7 +49,10 @@ const localDriver: StorageDriver = {
   async save(body, key) {
     const filePath = path.join(uploadRoot(), key);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, body);
+    // Write then rename so background re-optimization never serves a partial file.
+    const tempPath = `${filePath}.${randomUUID()}.tmp`;
+    await fs.writeFile(tempPath, body);
+    await fs.rename(tempPath, filePath);
   },
   async get(key) {
     try {
@@ -146,44 +149,85 @@ function driver(): StorageDriver {
   return process.env.STORAGE_DRIVER === "s3" ? s3Driver : localDriver;
 }
 
-async function optimizeImage(file: File): Promise<{ body: Buffer; mimeType: string }> {
-  const body = Buffer.from(await file.arrayBuffer());
-  // Sharp's bundled build does not decode HEIC/HEIF. Keep these files intact
-  // so their EXIF GPS can still be read and their original bytes are available
-  // to clients that support the format.
-  if (["image/gif", "image/heic", "image/heif"].includes(file.type)) {
-    return { body, mimeType: file.type };
-  }
+const OPTIMIZABLE_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/** Whether a stored file can be shrunk by `optimizeImageBuffer`. */
+export function isOptimizableImage(mimeType: string): boolean {
+  // Sharp's bundled build does not decode HEIC/HEIF, and GIFs may be animated,
+  // so those are kept byte-for-byte.
+  return OPTIMIZABLE_IMAGE_TYPES.includes(mimeType);
+}
+
+async function optimizeImageBuffer(body: Buffer, mimeType: string): Promise<Buffer> {
+  if (!isOptimizableImage(mimeType)) return body;
 
   const sharp = (await import("sharp")).default;
   let pipeline = sharp(body)
     .rotate()
     .resize({ width: 2560, height: 2560, fit: "inside", withoutEnlargement: true })
     .withMetadata();
-  if (file.type === "image/png") {
+  if (mimeType === "image/png") {
     pipeline = pipeline.png({ compressionLevel: 9, palette: true, quality: 80 });
-  } else if (file.type === "image/webp") {
+  } else if (mimeType === "image/webp") {
     pipeline = pipeline.webp({ quality: 82 });
   } else {
     pipeline = pipeline.jpeg({ quality: 82, mozjpeg: true });
   }
-  return { body: await pipeline.toBuffer(), mimeType: file.type };
+  return pipeline.toBuffer();
+}
+
+export async function streamToBuffer(body: Buffer | ReadableStream): Promise<Buffer> {
+  if (Buffer.isBuffer(body)) return body;
+
+  const chunks: Uint8Array[] = [];
+  const reader = body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) chunks.push(value);
+  }
+  return Buffer.concat(chunks);
 }
 
 /**
- * Saves an uploaded file, optimizing supported raster images to conserve storage.
+ * Saves an uploaded file. By default supported raster images are optimized
+ * inline; pass `{ optimize: false }` to store the original bytes untouched
+ * (post uploads do this so metadata such as GPS is preserved, and are
+ * optimized later by `optimizeStoredImage`).
  * When `feedId` is provided the storage key is namespaced `feeds/<feedId>/...` so
  * each feed's objects stay self-contained (splittable per FR-001) and the media
  * route can resolve the owning feed directly from the key.
  */
-export async function saveMedia(file: File, feedId?: string): Promise<{ key: string; mimeType: string }> {
-  const stored = file.type.startsWith("image/")
-    ? await optimizeImage(file)
-    : { body: Buffer.from(await file.arrayBuffer()), mimeType: file.type };
-  const ext = EXT_BY_MIME[stored.mimeType] ?? path.extname(file.name).toLowerCase();
+export async function saveMedia(
+  file: File,
+  feedId?: string,
+  { optimize = true }: { optimize?: boolean } = {},
+): Promise<{ key: string; mimeType: string }> {
+  const original = Buffer.from(await file.arrayBuffer());
+  const body = optimize ? await optimizeImageBuffer(original, file.type) : original;
+  const ext = EXT_BY_MIME[file.type] ?? path.extname(file.name).toLowerCase();
   const key = feedId ? `feeds/${feedId}/${randomUUID()}${ext}` : `${randomUUID()}${ext}`;
-  await driver().save(stored.body, key, stored.mimeType);
-  return { key, mimeType: stored.mimeType };
+  await driver().save(body, key, file.type);
+  return { key, mimeType: file.type };
+}
+
+/**
+ * Re-encodes a stored original image in place (same key and MIME type).
+ * Returns the original bytes so callers can still read their metadata, or
+ * null when the object no longer exists.
+ */
+export async function optimizeStoredImage(key: string, mimeType: string): Promise<Buffer | null> {
+  const stored = await driver().get(key);
+  if (!stored) return null;
+  const original = await streamToBuffer(stored.body);
+  if (!isOptimizableImage(mimeType)) return original;
+
+  const optimized = await optimizeImageBuffer(original, mimeType);
+  // Only replace the original when re-encoding actually saves space.
+  if (optimized.length < original.length) {
+    await driver().save(optimized, key, mimeType);
+  }
+  return original;
 }
 
 export async function getMedia(key: string): Promise<StoredFile | null> {

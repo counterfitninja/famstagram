@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { extractFirstGpsCoordinatesWithDiagnostics } from "@/lib/exif";
 import { reverseGeocodeLocation } from "@/lib/geocoding";
+import { optimizePendingMedia } from "@/lib/media-optimization";
 import { createPostNotifications } from "@/lib/notifications";
 import { getSession } from "@/lib/session";
 import { saveMedia } from "@/lib/storage";
@@ -126,7 +127,7 @@ export async function POST(req: Request) {
 
   try {
     for (const [index, file] of files.entries()) {
-      const { key, mimeType } = await saveMedia(file, feedId);
+      const { key, mimeType } = await saveMedia(file, feedId, { optimize: false });
       await db.media.create({ data: { postId: post.id, key, mimeType, order: index } });
     }
   } catch (err) {
@@ -139,6 +140,8 @@ export async function POST(req: Request) {
   }
 
   await createPostNotifications({ postId: post.id, authorId: session.userId, caption, feedId });
+
+  after(() => optimizePendingMedia());
 
   return NextResponse.redirect(toRequestUrl(req, `/post/${post.id}`), 303);
 }

@@ -11,6 +11,7 @@
     "db:seed": "prisma db seed",
     "db:ensure-admin": "tsx prisma/ensure-admin.ts",
     "gps:backfill": "tsx scripts/backfill-gps.ts",
+    "media:optimize": "tsx scripts/optimize-media.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

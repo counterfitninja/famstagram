@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { extractFirstGpsCoordinatesWithDiagnostics } from "@/lib/exif";
 import { reverseGeocodeLocation } from "@/lib/geocoding";
+import { optimizePendingMedia } from "@/lib/media-optimization";
 import { createPostNotifications } from "@/lib/notifications";
 import { getSession } from "@/lib/session";
 import { saveMedia } from "@/lib/storage";
@@ -139,7 +140,9 @@ export async function POST(req: Request) {
 
   try {
     for (const [index, file] of files.entries()) {
-      const { key, mimeType } = await saveMedia(file, feedId);
+      // Store the original bytes; resizing happens in a background task so
+      // nothing touches the file's metadata during the upload request.
+      const { key, mimeType } = await saveMedia(file, feedId, { optimize: false });
       await db.media.create({
         data: { postId: post.id, key, mimeType, order: index },
       });
@@ -159,6 +162,8 @@ export async function POST(req: Request) {
     caption: captionCheck.data,
     feedId,
   });
+
+  after(() => optimizePendingMedia());
 
   return NextResponse.json({ id: post.id });
 }

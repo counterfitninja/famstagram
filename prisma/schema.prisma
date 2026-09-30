@@ -116,8 +116,11 @@ model Media {
   key      String // storage key (filename / S3 object key)
   mimeType String
   order    Int    @default(0)
+  // Null while the original upload is awaiting background size optimization.
+  optimizedAt DateTime?
 
   @@index([postId])
+  @@index([optimizedAt])
 }
 
 model Like {
