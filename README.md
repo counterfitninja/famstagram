@@ -53,7 +53,7 @@ Copy `.env.example` to `.env` and adjust:
 | `S3_ENDPOINT` / `S3_REGION` / `S3_BUCKET` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` | S3-compatible storage (e.g. MinIO) when using `s3` |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Web Push credentials and a `mailto:` contact address |
 | `PUSH_DEBUG` | Set to `true` temporarily to log masked Web Push diagnostics |
-| `UPLOAD_DEBUG` | Set to `true` temporarily to log upload MIME detection and GPS extraction diagnostics; coordinates and filenames are omitted |
+| `UPLOAD_DEBUG` | Set to `true` temporarily to log upload MIME detection and GPS extraction diagnostics; coordinates and filenames are omitted. Each entry includes the build commit SHA |
 
 ### Push notifications
 

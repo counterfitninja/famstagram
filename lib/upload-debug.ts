@@ -4,6 +4,9 @@ export function isUploadDebugEnabled(): boolean {
 
 export function logUploadDebug(event: string, details: Record<string, unknown>): void {
   if (isUploadDebugEnabled()) {
-    console.log(`[upload-debug] ${event}`, details);
+    console.log(`[upload-debug] ${event}`, {
+      buildCommit: process.env.BUILD_COMMIT ?? "unknown",
+      ...details,
+    });
   }
 }
