@@ -55,7 +55,7 @@ android {
     namespace "uk.co.famstagram.app"
     defaultConfig {
         applicationId "uk.co.famstagram.app"
-        minSdkVersion 23
+        minSdkVersion 24
         targetSdkVersion 36
         versionCode 1
         versionName "1.0.0"
@@ -78,7 +78,7 @@ android {
 
         
             // The data for the app to support web share target.
-            resValue "string", "shareTarget", '{\\"action\\":\\"/api/share-target\\",\\"method\\":\\"POST\\",\\"enctype\\":\\"multipart/form-data\\",\\"params\\":{\\"title\\":\\"title\\",\\"text\\":\\"text\\",\\"files\\":[{\\"name\\":\\"media\\",\\"accept\\":[\\"image/jpeg\\",\\"image/png\\",\\"image/webp\\",\\"image/gif\\",\\"image/heic\\",\\"image/heif\\",\\"video/mp4\\",\\"video/webm\\",\\"video/quicktime\\"]}]}}'
+            resValue "string", "shareTarget", '{\\"action\\":\\"https://www.famstagram.co.uk/api/share-target\\",\\"method\\":\\"POST\\",\\"enctype\\":\\"multipart/form-data\\",\\"params\\":{\\"title\\":\\"title\\",\\"text\\":\\"text\\",\\"files\\":[{\\"name\\":\\"media\\",\\"accept\\":[\\"image/jpeg\\",\\"image/png\\",\\"image/webp\\",\\"image/gif\\",\\"image/heic\\",\\"image/heif\\",\\"video/mp4\\",\\"video/webm\\",\\"video/quicktime\\"]}]}}'
         
 
         // The hostname is used when building the intent-filter, so the TWA is able to

@@ -113,7 +113,7 @@ offline access or bypass any family/feed permissions.
 
 Install Android Studio with **JDK 17**, **Android SDK Platform 36**, and Android
 SDK Build-Tools. Open `android/` in Android Studio and let Gradle sync, then run
-on a device or emulator. Alternatively, from the repository root:
+on an Android 7.0+ (API 24+) device or emulator. Alternatively, from the repository root:
 
 ```bash
 cd android

@@ -39,6 +39,12 @@ test("Android package and origin match the website association", () => {
   assert.equal(manifest.host, "www.famstagram.co.uk");
   assert.equal(manifest.startUrl, "/");
   assert.equal(manifest.fallbackType, "customtabs");
+  assert.equal(manifest.shareTarget.action, "https://www.famstagram.co.uk/api/share-target");
+  assert.equal(manifest.minSdkVersion, 24);
+
+  const build = readFileSync(new URL("../android/app/build.gradle", import.meta.url), "utf8");
+  assert.match(build, /minSdkVersion 24/);
+  assert.ok(build.includes(manifest.shareTarget.action));
 });
 
 test("only the exact asset links endpoint bypasses the session gate", () => {
