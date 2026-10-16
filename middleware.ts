@@ -4,6 +4,7 @@ import { sessionOptions } from "@/lib/session";
 
 const PUBLIC_PREFIXES = ["/login", "/invite", "/icons"];
 const PUBLIC_ASSETS = [
+  "/.well-known/assetlinks.json",
   "/manifest.webmanifest",
   "/sw.js",
   "/api/push/receipt",

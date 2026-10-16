@@ -27,3 +27,15 @@
 npm-debug.log*
 next-env.d.ts
 .zip
+
+# Android generated output and local signing credentials
+/android/.gradle/
+/android/.idea/
+/android/**/build/
+/android/local.properties
+/android/*.apk
+/android/*.aab
+/android/*.idsig
+/android/signing.properties
+*.keystore
+*.jks
