@@ -7,6 +7,10 @@
 
 # production
 /build
+/dist/
+
+# logs
+*.log
 
 # env
 .env

@@ -25,11 +25,14 @@ Next.js 15 (App Router) · TypeScript · Tailwind CSS · Prisma + SQLite · iron
 
 ## Getting started
 
+Create the local environment file before running Prisma commands. Prisma CLI loads `.env`, while Next.js also supports `.env.local`.
+
 ```bash
-npm install          # install dependencies (also runs prisma generate)
-npm run db:migrate   # create the SQLite database (prisma migrate dev)
-npm run db:seed      # create the admin user + print an invite link
-npm run dev          # start the dev server at http://localhost:3000
+cp .env.example .env       # macOS/Linux; use `Copy-Item .env.example .env` in PowerShell
+npm install                 # install dependencies (also runs prisma generate)
+npm run db:migrate          # create the SQLite database (prisma migrate dev)
+npm run db:seed             # create the admin user + print an invite link
+npm run dev                 # start the dev server at http://localhost:3000
 ```
 
 Then:
@@ -44,7 +47,7 @@ Copy `.env.example` to `.env` and adjust:
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | SQLite location (default `file:./dev.db`) |
+| `DATABASE_URL` | SQLite location (the example `file:../dev.db` stores `dev.db` in the project root) |
 | `SESSION_SECRET` | Cookie encryption secret — **required ≥ 32 chars** |
 | `APP_ORIGIN` | Canonical app origin for server-side redirects (recommended when running behind a reverse proxy) |
 | `WEBAUTHN_ORIGIN` / `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_NAME` | Passkey origin and relying party settings for Face ID / Touch ID / Windows Hello |

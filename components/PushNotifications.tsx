@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface InstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -15,6 +16,7 @@ function decodeVapidKey(key: string) {
 }
 
 export default function PushNotifications() {
+  const router = useRouter();
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isIosBrowser, setIsIosBrowser] = useState(false);
@@ -26,6 +28,14 @@ export default function PushNotifications() {
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
 
     void navigator.serviceWorker.register("/sw.js");
+
+    function handleServiceWorkerMessage(event: MessageEvent) {
+      if (event.data?.type === "famstagram-push-received") {
+        router.refresh();
+      }
+    }
+
+    navigator.serviceWorker.addEventListener("message", handleServiceWorkerMessage);
     const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const standalone =
       window.matchMedia("(display-mode: standalone)").matches ||
@@ -36,12 +46,18 @@ export default function PushNotifications() {
 
     const isDismissed = localStorage.getItem("pwa_prompt_dismissed") === "true";
 
-    void fetch("/api/push/subscription")
+    void navigator.serviceWorker.ready
+      .then((registration) => registration.pushManager.getSubscription())
+      .then((subscription) => {
+        const endpoint = subscription?.endpoint;
+        return fetch(endpoint ? `/api/push/subscription?endpoint=${encodeURIComponent(endpoint)}` : "/api/push/subscription");
+      })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
-        if (!data?.configured || data.subscribed) return;
+        if (!data?.configured) return;
         setPublicKey(data.publicKey);
-        if ((ios || standalone) && !isDismissed) {
+        const permission = Notification.permission;
+        if (!data.currentSubscribed && permission !== "denied" && !isDismissed && standalone) {
           setShowPrompt(true);
         }
       })
@@ -51,7 +67,7 @@ export default function PushNotifications() {
       event.preventDefault();
       if (standalone) return;
       setInstallPrompt(event as InstallPromptEvent);
-      if (!isDismissed) {
+      if (!isDismissed && Notification.permission !== "denied") {
         setShowPrompt(true);
       }
     }
@@ -70,6 +86,7 @@ export default function PushNotifications() {
     window.addEventListener("reset-pwa-banner", handleResetBanner);
 
     return () => {
+      navigator.serviceWorker.removeEventListener("message", handleServiceWorkerMessage);
       window.removeEventListener("beforeinstallprompt", captureInstallPrompt);
       window.removeEventListener("appinstalled", hideInstallPrompt);
       window.removeEventListener("reset-pwa-banner", handleResetBanner);
@@ -79,7 +96,8 @@ export default function PushNotifications() {
   async function subscribeToPush() {
     if (!publicKey) return;
     const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.subscribe({
+    const existingSubscription = await registration.pushManager.getSubscription();
+    const subscription = existingSubscription ?? await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: decodeVapidKey(publicKey),
     });
@@ -102,6 +120,10 @@ export default function PushNotifications() {
           setShowPrompt(false);
         }
       } else if (!isIosBrowser) {
+        if (Notification.permission === "denied") {
+          setStatus("error");
+          return;
+        }
         const permission = await Notification.requestPermission();
         if (permission === "granted") await subscribeToPush();
         setShowPrompt(false);
