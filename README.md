@@ -87,11 +87,110 @@ app/
   actions/                        # server actions (auth, likes, comments, shares, invites)
   api/posts                       # post upload (route handler, supports large files)
   api/media/[key]                 # authenticated media serving
+android/                          # Bubblewrap-generated Android Trusted Web Activity
 components/                       # UI components (PostCard, MediaCarousel, LikeButton, …)
 lib/                              # db, session, auth guards, storage abstraction, validation
 prisma/                           # schema + seed
 middleware.ts                     # redirects unauthenticated visitors to /login
 ```
+
+## Android app (Trusted Web Activity)
+
+The Android project in `android/` opens **https://www.famstagram.co.uk/** using
+a Trusted Web Activity (TWA), not a separate native UI or embedded WebView.
+It reuses the existing login, feeds, uploads, passkeys, and web backend. Web
+changes deploy normally without an Android rebuild. A compatible browser
+(such as current Chrome) must be installed; if TWA is unavailable or domain
+verification fails, it falls back to a browser Custom Tab with a toolbar.
+
+The package ID is **`uk.co.famstagram.app`**. Launcher/splash icons come from
+the existing PWA assets. Android share intents target the existing authenticated
+share flow, and notification delegation is enabled; users must still grant
+notification permission and subscribe through the website. This does not add
+offline access or bypass any family/feed permissions.
+
+### Build and try it
+
+Install Android Studio with **JDK 17**, **Android SDK Platform 36**, and Android
+SDK Build-Tools. Open `android/` in Android Studio and let Gradle sync, then run
+on an Android 7.0+ (API 24+) device or emulator. Alternatively, from the repository root:
+
+```bash
+cd android
+# Set ANDROID_HOME to your SDK installation, or set sdk.dir in local.properties.
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+On Windows use `gradlew.bat`. The checked-in Gradle wrapper downloads Gradle;
+builds also need access to Google's Maven repository and Maven Central.
+Debug builds are signed automatically with your local Android debug key.
+Until its certificate is associated with the website, a browser toolbar is expected.
+
+### Sign and verify your domain
+
+1. Install Bubblewrap (Node.js 22 LTS recommended) and create a release key:
+
+   ```bash
+   npm install --global @bubblewrap/cli@1.27.0
+   cd android
+   keytool -genkeypair -v -keystore famstagram.keystore -alias famstagram \
+     -keyalg RSA -keysize 2048 -validity 10000
+   keytool -list -v -keystore famstagram.keystore -alias famstagram
+   ```
+
+   Run `cd android` from the repository root. Choose your own passwords when
+   prompted; keep the keystore and passwords backed up securely outside Git.
+   The signing path and alias are configured in `android/twa-manifest.json`.
+
+2. Copy the certificate's **SHA256** fingerprint (32 colon-separated hex pairs)
+   into the deployed web app's `ANDROID_SHA256_CERT_FINGERPRINTS` environment
+   variable. Multiple certificates can be comma-separated. For Google Play,
+   use the **app signing certificate** from Play Console → App integrity,
+   not just the upload certificate. For local debug verification, inspect
+   `~/.android/debug.keystore` with alias `androiddebugkey` instead; only
+   authorize debug certificates on environments where you intend to trust them.
+
+3. Deploy/restart the web app with that environment variable, then check:
+
+   ```bash
+   curl -i https://www.famstagram.co.uk/.well-known/assetlinks.json
+   ```
+
+   It must return **200**, JSON, and your package ID and fingerprint, without
+   a login redirect or proxy authentication challenge. Only this exact
+   association endpoint is public; private pages and media remain protected.
+   An unset variable returns `[]` (no apps trusted); malformed fingerprints
+   return 503. Certificate fingerprints are public identifiers, not private keys.
+
+4. Build a signed APK and Android App Bundle:
+
+   ```bash
+   cd android
+   bubblewrap build
+   ```
+
+   Run from the repository root, or omit `cd android` if already there.
+   On first use, Bubblewrap can configure its JDK/SDK. Enter signing passwords
+   at the prompts. Outputs are `android/app-release-signed.apk` for sideloading
+   and `android/app-release-bundle.aab` for Play Console. Do not distribute
+   debug builds as releases. `./gradlew bundleRelease` alone produces an
+   **unsigned** bundle; use Bubblewrap for signed releases.
+
+5. Install the signed APK on an Android device and confirm toolbar-free launch,
+   invite/password/passkey login, photo/video uploads, sharing from Photos,
+   and notification opt-in. Verification is tied to the exact `www` HTTPS
+   origin; other domains are not implicitly trusted.
+
+### Updating the Android wrapper
+
+Edit `android/twa-manifest.json`, then run `bubblewrap update` from `android/`
+to regenerate the native project. Review the generated diff, keep the repository
+lists in `android/build.gradle` on `google()` and `mavenCentral()` (the generator
+may restore retired `jcenter()`), and retain the package ID and release key.
+Bubblewrap increments the Android version code during updates; each Play upload
+needs a higher code. A native rebuild is only required for wrapper changes such
+as icons, Android permissions, or intent filters—not normal website updates.
 
 ## Notes & limits
 
