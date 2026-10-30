@@ -77,7 +77,7 @@ export function SettingsScreen() {
   const navigation = useNavigation<Navigation>();
   return <Page><Text style={s.title}>Your family account</Text>
     <View style={s.card}><Text style={s.label}>Device notifications</Text>
-      <Text style={s.muted}>Alerts use a generic message, without family names or captions on the lock screen.</Text>
+      <Text style={s.muted}>Alerts include the sender, message and a photo preview. They may appear on your lock screen; use Android notification settings to hide sensitive content.</Text>
       <Button title="Enable on this device" disabled={busy} onPress={() => void run(async () => { await enablePush(api); Alert.alert("Notifications enabled"); })} />
       <Button title="Disable on this device" secondary disabled={busy} onPress={() => void run(async () => { await disablePush(api); Alert.alert("Notifications disabled"); })} />
     </View>

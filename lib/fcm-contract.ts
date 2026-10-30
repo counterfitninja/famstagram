@@ -6,11 +6,15 @@ export const fcmRegistrationSchema = z.object({
   enabled: z.boolean(),
 });
 
-export function fcmMessage(token: string, postId: string, feedId: string) {
+export function fcmMessage(token: string, postId: string, feedId: string, content: { title: string; body: string; image?: string }) {
   return {
     message: {
       token,
-      notification: { title: "Famstagram", body: "There's a new update in your private family feed." },
+      notification: {
+        title: Array.from(content.title).slice(0, 80).join(""),
+        body: Array.from(content.body).slice(0, 300).join(""),
+        ...(content.image ? { image: content.image } : {}),
+      },
       // expo-notifications decodes the JSON body into notification.content.data.
       data: { body: JSON.stringify({ postId, feedId }) },
       android: { priority: "HIGH", ttl: "60s", notification: { channel_id: "family-updates", sound: "default" } },

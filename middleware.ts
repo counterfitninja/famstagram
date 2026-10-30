@@ -8,6 +8,8 @@ const PUBLIC_ASSETS = [
   "/manifest.webmanifest",
   "/sw.js",
   "/api/push/receipt",
+  // Short-lived, recipient/device-bound image grants are validated in the route.
+  "/api/native-preview",
   // Auth is checked inside the route itself so an unauthenticated POST (from
   // the OS share sheet) gets a proper redirect instead of a 307-preserved
   // POST to the /login page.

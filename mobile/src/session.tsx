@@ -3,7 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { Alert } from "react-native";
 import { Api, type Credential } from "./api";
 import type { Me } from "./types";
-import { restorePush, watchPushToken } from "./notifications";
+import { initializePush, watchPushToken } from "./notifications";
 
 type Session = {
   api: Api; me: Me | null; starting: boolean; startupError: string | null;
@@ -37,6 +37,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [api, credential]);
   useEffect(() => {
     if (!credential) return;
+    void initializePush(api).catch((error: Error) => Alert.alert("Could not enable notifications", error.message));
     const subscription = watchPushToken(api, (error) => Alert.alert("Could not update notifications", error.message));
     return () => subscription.remove();
   }, [api, credential]);
@@ -47,14 +48,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       if (typeof stored.token !== "string" || stored.cookieName !== "famstagram_session") throw new Error("Stored sign-in is invalid. Sign out and sign in again.");
       const client = new Api(stored, () => { void signOut().catch((e: Error) => setStartupError(e.message)); });
       const data = await client.get<Me>("me");
-      await restorePush(client).catch((error: Error) => Alert.alert("Could not restore notifications", error.message));
       setCredential(stored); setMe(data);
     }).catch((error: Error) => setStartupError(error.message)).finally(() => setStarting(false));
   }, [signOut]);
   const signIn = async (value: Credential) => {
     const client = new Api(value, () => {});
     const data = await client.get<Me>("me");
-    await restorePush(client).catch((error: Error) => Alert.alert("Could not restore notifications", error.message));
     await SecureStore.setItemAsync(key, JSON.stringify(value), { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY });
     authVersion.current++;
     setCredential(value); setMe(data); setStartupError(null);
