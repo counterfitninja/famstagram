@@ -1,6 +1,7 @@
 import webpush from "web-push";
 import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
+import { sendNativePush } from "@/lib/native-push";
 
 // Some hosting UIs store env values with surrounding quotes/whitespace; strip those defensively.
 function cleanEnv(value: string | undefined) {
@@ -98,6 +99,7 @@ export async function sendPushNotifications({
   postId: string;
   feedId: string;
 }) {
+  await sendNativePush(recipients, postId, feedId);
   if (!isPushConfigured() || recipients.length === 0 || !publicKey || !privateKey) {
     pushDebug("skipped send", {
       configured: isPushConfigured(),
