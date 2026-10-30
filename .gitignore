@@ -49,3 +49,6 @@ next-env.d.ts
 /mobile/.env
 /mobile/google-services.json
 /mobile/GoogleService-Info.plist
+/mobile/src/generated/leaflet.ts
+/firebase-service-account*.json
+/secrets/

@@ -1,42 +1,47 @@
-import { z } from "zod";
+import { GoogleAuth } from "google-auth-library";
 import { db } from "./db";
+import { fcmMessage, isUnregisteredFcmToken } from "./fcm-contract";
 
-const ticketSchema = z.object({
-  status: z.enum(["ok", "error"]),
-  details: z.object({ error: z.string().optional() }).optional(),
-});
+const auth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/firebase.messaging"] });
+
 export async function sendNativePush(recipients: { id: string }[], postId: string, feedId: string) {
   if (!recipients.length) return;
   const tokens = await db.nativePushToken.findMany({
-    where: { userId: { in: recipients.map((r) => r.id) }, user: { feedMemberships: { some: { feedId } } } },
+    where: { provider: "fcm", userId: { in: recipients.map((r) => r.id) }, user: { feedMemberships: { some: { feedId } } } },
   });
-  for (let offset = 0; offset < tokens.length; offset += 100) {
-    const batch = tokens.slice(offset, offset + 100);
-    try {
-      const response = await fetch("https://exp.host/--/api/v2/push/send", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(process.env.EXPO_ACCESS_TOKEN ? { Authorization: `Bearer ${process.env.EXPO_ACCESS_TOKEN}` } : {}),
-        },
-        body: JSON.stringify(batch.map((entry) => ({
-          to: entry.token, title: "Famstagram", body: "There's a new update in your private family feed.",
-          data: { postId, feedId }, sound: "default", channelId: "family-updates",
-        }))),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!response.ok) throw new Error(`Expo push service returned ${response.status}`);
-      const result = z.object({ data: z.array(ticketSchema) }).parse(await response.json());
-      if (result.data.length !== batch.length) throw new Error("Expo push ticket count did not match.");
-      for (let index = 0; index < result.data.length; index++) {
-        const ticket = result.data[index];
-        if (ticket.status === "error") {
-          if (ticket.details?.error === "DeviceNotRegistered") await db.nativePushToken.deleteMany({ where: { token: batch[index].token } });
-          else console.error("Native push rejected", { reason: ticket.details?.error ?? "unknown" });
+  if (!tokens.length) return;
+  const projectId = process.env.FIREBASE_PROJECT_ID?.trim();
+  if (!projectId || !/^[a-z0-9-]+$/.test(projectId)) {
+    console.error("Native push is not configured: set FIREBASE_PROJECT_ID and Google application credentials on the server.");
+    return;
+  }
+  try {
+    const accessToken = await auth.getAccessToken();
+    if (!accessToken) throw new Error("Google did not return an FCM access token.");
+    // Bound concurrency and timeouts; do not log credentials or device tokens.
+    for (let offset = 0; offset < tokens.length; offset += 10) {
+      await Promise.all(tokens.slice(offset, offset + 10).map(async (entry) => {
+        try {
+          const response = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+            body: JSON.stringify(fcmMessage(entry.token, postId, feedId)),
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (!response.ok) {
+            const body: unknown = await response.json();
+            if (isUnregisteredFcmToken(body)) {
+              await db.nativePushToken.deleteMany({ where: { token: entry.token, userId: entry.userId, provider: "fcm" } });
+            } else {
+              console.error("FCM push rejected", { status: response.status });
+            }
+          }
+        } catch {
+          console.error("FCM push request failed; check server credentials and connectivity.");
         }
-      }
-    } catch (error) {
-      console.error("Native push delivery failed", error instanceof Error ? error.message : "Unknown push error");
+      }));
     }
+  } catch {
+    console.error("FCM authorization failed; check server application credentials and Firebase messaging permissions.");
   }
 }

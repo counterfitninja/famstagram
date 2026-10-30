@@ -19,7 +19,7 @@ test("native API end-to-end permissions, uploads and app sign-in", { timeout: 18
     ...process.env, DATABASE_URL: databaseUrl, NODE_ENV: "production",
     SESSION_SECRET: "integration-only-session-secret-not-for-production-123456",
     UPLOAD_DIR: path.join(directory, "media"), STORAGE_DRIVER: "local",
-    VAPID_PUBLIC_KEY: "", VAPID_PRIVATE_KEY: "", EXPO_ACCESS_TOKEN: "",
+    VAPID_PUBLIC_KEY: "", VAPID_PRIVATE_KEY: "", FIREBASE_PROJECT_ID: "", GOOGLE_APPLICATION_CREDENTIALS: "",
   };
   execFileSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], { env, stdio: "pipe" });
   const db = new PrismaClient({ datasourceUrl: databaseUrl });
@@ -137,11 +137,13 @@ test("native API end-to-end permissions, uploads and app sign-in", { timeout: 18
       assert.equal((await request("/api/native/exchange", "", { code, verifier })).status, 401);
     });
     await t.test("device push registration can be revoked without affecting other users", async () => {
-      const token = "ExpoPushToken[integration-test-device]";
-      assert.equal((await request("/api/native/push", alice, { token, enabled: true })).status, 200);
-      assert.equal((await request("/api/native/push", bob, { token, enabled: false })).status, 200);
+      const token = "integration-test-device:valid_fcm_token";
+      assert.equal((await request("/api/native/push", alice, { provider: "expo", token, enabled: true })).status, 400);
+      assert.equal((await request("/api/native/push", alice, { provider: "fcm", token, enabled: true })).status, 200);
+      assert.equal((await request("/api/native/push", bob, { provider: "fcm", token, enabled: false })).status, 200);
       assert.equal(await db.nativePushToken.count({ where: { token } }), 1);
-      assert.equal((await request("/api/native/push", alice, { token, enabled: false })).status, 200);
+      assert.equal((await db.nativePushToken.findUniqueOrThrow({ where: { token } })).provider, "fcm");
+      assert.equal((await request("/api/native/push", alice, { provider: "fcm", token, enabled: false })).status, 200);
       assert.equal(await db.nativePushToken.count(), 0);
     });
   } finally {

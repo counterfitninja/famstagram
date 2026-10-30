@@ -3,8 +3,8 @@
   "meta": {
     "version": "PTDL_v2"
   },
-  "exported_at": "2026-09-05T00:00:00+00:00",
-  "name": "Famstagram v1.1.8",
+  "exported_at": "2026-10-30T00:00:00+00:00",
+  "name": "Famstagram v1.1.9",
   "author": "admin@example.com",
   "description": "Private, invite-only family photo and video sharing app built with Next.js, Prisma, and SQLite.",
   "features": null,
@@ -21,7 +21,7 @@
   },
   "scripts": {
     "installation": {
-      "script": "#!/bin/bash\nset -e\n\nexport HOME=/mnt/server\n\nif [ -z \"${GIT_REPO}\" ]; then\n  echo \"Installation failed: set Git Repository (GIT_REPO) before reinstalling.\"\n  exit 1\nfi\n\nif [ -z \"${GIT_BRANCH}\" ]; then\n  echo \"Installation failed: set Git Branch (GIT_BRANCH) before reinstalling.\"\n  exit 1\nfi\n\necho \"Cloning branch ${GIT_BRANCH} from ${GIT_REPO}\"\napt-get update\napt-get install -y --no-install-recommends git ca-certificates rsync\n\nrm -rf /tmp/famstagram\ngit clone --depth 1 --branch \"${GIT_BRANCH}\" \"${GIT_REPO}\" /tmp/famstagram\nrsync -a --delete --exclude=uploads --exclude=dev.db /tmp/famstagram/ /mnt/server/\ncd /mnt/server\nnpm ci\nnpx prisma generate\nnpx prisma migrate deploy\nnpm run build\nnpm run db:ensure-admin\nnpm cache clean --force\nrm -rf node_modules .next/cache\n\nmkdir -p \"${UPLOAD_DIR}\"\n",
+      "script": "#!/bin/bash\nset -e\n\nexport HOME=/mnt/server\n\nif [ -z \"${GIT_REPO}\" ]; then\n  echo \"Installation failed: set Git Repository (GIT_REPO) before reinstalling.\"\n  exit 1\nfi\n\nif [ -z \"${GIT_BRANCH}\" ]; then\n  echo \"Installation failed: set Git Branch (GIT_BRANCH) before reinstalling.\"\n  exit 1\nfi\n\necho \"Cloning branch ${GIT_BRANCH} from ${GIT_REPO}\"\napt-get update\napt-get install -y --no-install-recommends git ca-certificates rsync\n\nrm -rf /tmp/famstagram\ngit clone --depth 1 --branch \"${GIT_BRANCH}\" \"${GIT_REPO}\" /tmp/famstagram\nrsync -a --delete --exclude=uploads --exclude=dev.db --exclude=/secrets/ /tmp/famstagram/ /mnt/server/\ncd /mnt/server\nnpm ci\nnpx prisma generate\nnpx prisma migrate deploy\nnpm run build\nnpm run db:ensure-admin\nnpm cache clean --force\nrm -rf node_modules .next/cache\n\nmkdir -p \"${UPLOAD_DIR}\"\n",
       "container": "ghcr.io/parkervcp/installers:debian",
       "entrypoint": "bash"
     }
@@ -225,6 +225,26 @@
       "user_viewable": true,
       "user_editable": true,
       "rules": "required|string|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "Firebase Project ID",
+      "description": "Optional direct Android FCM push project ID. Must match the Firebase Android client configuration bundled in the native APK. Existing browser push does not use this.",
+      "env_variable": "FIREBASE_PROJECT_ID",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "Google Application Credentials File",
+      "description": "Optional absolute container path to the server-only Firebase service-account JSON file (for example /home/container/secrets/firebase-admin.json). Mount or upload it securely outside public/ and uploads/. Never commit it, bundle it in the APK, or paste its contents into this field.",
+      "env_variable": "GOOGLE_APPLICATION_CREDENTIALS",
+      "default_value": "",
+      "user_viewable": false,
+      "user_editable": true,
+      "rules": "nullable|string|max:4096",
       "field_type": "text"
     },
     {
