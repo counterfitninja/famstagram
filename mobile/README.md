@@ -145,8 +145,10 @@ notification channels, native device tokens, and notification taps.
    the runtime service account's messaging permissions instead.
 5. Deploy the backend and run `npx prisma migrate deploy`, including the
    provider migration. Rebuild/install the APK with the Android client file.
-   Both must use the **same Firebase project**. In the native app's Account
-   settings, tap **Enable on this device** and allow notifications.
+   Both must use the **same Firebase project**. In the native app,
+   allow notifications when prompted after your first successful sign-in
+   (or on startup if already signed in). Declining or disabling is remembered;
+   use Account settings > **Enable on this device** to opt in later.
 6. Test with two accounts in the same feed: enable notifications on the
    recipient's phone, put the app in the background, and publish from the other
    account. Check foreground alerts and tapping a notification from a closed
@@ -164,8 +166,27 @@ is your actual runtime mount path. Keep file permissions restricted to the
 server user; hiding the Startup path field does not protect the file itself.
 
 The server selects recipients using existing feed membership, mute and mention
-rules. Google receives device tokens, post/feed IDs and a generic message,
-not family names, captions, coordinates or media. Tokens refresh on startup
+rules. Rich previews are enabled by default for opted-in Android devices:
+the sender and caption/comment text appear with the first supported photo
+(JPEG, PNG, WebP or GIF) in the post. Android shows one image when expanded, not
+an image carousel. Video-only and HEIC-only posts use text notifications.
+Text previews are limited to 300 characters; tapping opens the full post.
+
+Google receives device tokens, post/feed IDs, sender names, preview text and
+short-lived image URLs, and may fetch the preview image. This content can appear
+on the lock screen; hide sensitive notification content in Android settings or
+disable device notifications if desired. The preview URL is a bearer grant valid
+for five minutes, scoped to one image, recipient and registered device. The
+server rechecks current feed membership and device registration on every fetch.
+It returns only a resized JPEG under 1 MB without EXIF/GPS, with no-store caching;
+original media still requires the existing authenticated media route.
+Revoking access prevents new fetches but cannot retract downloaded notifications.
+Do not log preview query strings in reverse proxy/access logs.
+Image previews require the server's `APP_ORIGIN` to be its public HTTPS origin
+and a valid `SESSION_SECRET`; missing configuration logs an error and sends text
+only. Failed or delayed image downloads can also leave a text-only notification.
+
+Tokens refresh on startup
 and native token-change events for opted-in devices. Disable explicitly or
 sign out to unregister. Server failures are logged without tokens/private keys;
 only explicit FCM `UNREGISTERED` errors remove registrations. FCM acceptance

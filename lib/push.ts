@@ -2,6 +2,8 @@ import webpush from "web-push";
 import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
 import { sendNativePush } from "@/lib/native-push";
+import { getPushNotificationContent } from "@/lib/notification-content";
+export { getPushNotificationContent } from "@/lib/notification-content";
 
 // Some hosting UIs store env values with surrounding quotes/whitespace; strip those defensively.
 function cleanEnv(value: string | undefined) {
@@ -52,27 +54,6 @@ function endpointSummary(endpoint: string) {
   return { provider: url.hostname, endpointTail: endpoint.slice(-18) };
 }
 
-export function getPushNotificationContent(
-  type: "comment" | "mention" | "post",
-  actorUsername: string,
-  caption: string,
-) {
-  const title =
-    type === "mention"
-      ? `${actorUsername} tagged you`
-      : type === "comment"
-        ? `${actorUsername} commented on your post`
-        : `New post from ${actorUsername}`;
-  const body =
-    caption ||
-    (type === "mention"
-      ? "You were tagged in a post."
-      : type === "comment"
-        ? "Added a comment to your post."
-        : "Shared a new photo or video.");
-  return { title, body };
-}
-
 export function isPushConfigured() {
   return vapidConfigured;
 }
@@ -99,7 +80,7 @@ export async function sendPushNotifications({
   postId: string;
   feedId: string;
 }) {
-  await sendNativePush(recipients, postId, feedId);
+  await sendNativePush(recipients, postId, feedId, actorUsername, caption);
   if (!isPushConfigured() || recipients.length === 0 || !publicKey || !privateKey) {
     pushDebug("skipped send", {
       configured: isPushConfigured(),

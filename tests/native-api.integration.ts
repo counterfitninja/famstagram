@@ -9,6 +9,8 @@ import { createServer } from "node:net";
 import test from "node:test";
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
+import sharp from "sharp";
+import { createPreviewGrant, pushDeviceHash } from "../lib/push-preview";
 
 // Run after npm run build. A fresh database, media folder and standalone server
 // keep this independent of developer accounts, credentials and uploaded files.
@@ -85,7 +87,9 @@ test("native API end-to-end permissions, uploads and app sign-in", { timeout: 18
       const form = new FormData();
       form.set("caption", "A test photo"); form.set("feedId", "feed-a");
       form.set("clientLatitude", "0"); form.set("clientLongitude", "0");
-      form.set("media", new File([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64")], "test.png", { type: "image/png" }));
+      const photo = await sharp({ create: { width: 1200, height: 800, channels: 3, background: "#336699" } })
+        .withMetadata({ exif: { IFD0: { ImageDescription: "Private original metadata" } } }).png().toBuffer();
+      form.set("media", new File([new Uint8Array(photo)], "test.png", { type: "image/png" }));
       const response = await request("/api/posts", alice, form);
       assert.equal(response.status, 200, await response.clone().text());
       postId = (await response.json()).id;
@@ -95,6 +99,33 @@ test("native API end-to-end permissions, uploads and app sign-in", { timeout: 18
       assert.equal((await request(mediaPath, bob)).status, 200);
       assert.equal((await request(mediaPath, outsider)).status, 404);
       assert.equal((await request(`/api/native/post/${postId}`, outsider)).status, 404);
+    });
+    await t.test("push previews require valid unexpired grants and current feed/device access", async () => {
+      const media = await db.media.findFirstOrThrow({ where: { postId } });
+      const token = "integration-preview-device-token";
+      await db.nativePushToken.create({ data: { token, provider: "fcm", userId: "bob" } });
+      const target = { mediaId: media.id, userId: "bob", device: pushDeviceHash(token) };
+      const secret = env.SESSION_SECRET!;
+      const endpoint = (grant: string) => `/api/native-preview?grant=${encodeURIComponent(grant)}`;
+      const grant = createPreviewGrant(target, secret);
+      const response = await request(endpoint(grant));
+      assert.equal(response.status, 200, await response.clone().text());
+      assert.equal(response.headers.get("content-type"), "image/jpeg");
+      assert.equal(response.headers.get("cache-control"), "private, no-store");
+      const image = await response.arrayBuffer();
+      assert.ok(image.byteLength < 1_000_000);
+      const metadata = await sharp(Buffer.from(image)).metadata();
+      assert.ok(metadata.width! <= 960 && metadata.height! <= 640);
+      assert.equal(metadata.exif, undefined);
+      assert.equal((await request("/api/native-preview")).status, 404);
+      assert.equal((await request(endpoint(`${grant}bad`))).status, 404);
+      assert.equal((await request(endpoint(createPreviewGrant(target, secret, Date.now() - 301_000)))).status, 404);
+      assert.equal((await request(endpoint(createPreviewGrant({ ...target, userId: "outsider" }, secret)))).status, 404);
+      await db.feedMembership.delete({ where: { userId_feedId: { userId: "bob", feedId: "feed-a" } } });
+      assert.equal((await request(endpoint(grant))).status, 404);
+      await db.feedMembership.create({ data: { userId: "bob", feedId: "feed-a" } });
+      await db.nativePushToken.delete({ where: { token } });
+      assert.equal((await request(endpoint(grant))).status, 404);
     });
     await t.test("feed reads do not disclose private posts or account fields", async () => {
       const own = await (await request("/api/native/posts", alice)).json();
