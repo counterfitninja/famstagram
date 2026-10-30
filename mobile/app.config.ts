@@ -16,10 +16,13 @@ const config: ExpoConfig = {
     permissions: ["android.permission.ACCESS_MEDIA_LOCATION"],
     blockedPermissions: ["android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION", "android.permission.RECORD_AUDIO"],
     ...(process.env.GOOGLE_SERVICES_JSON ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON } : {}),
-    ...(process.env.GOOGLE_MAPS_ANDROID_API_KEY ? { config: { googleMaps: { apiKey: process.env.GOOGLE_MAPS_ANDROID_API_KEY } } } : {}),
   },
   ios: { bundleIdentifier: "uk.co.famstagram.nativeapp", supportsTablet: true },
   plugins: [
+    ["expo-build-properties", { android: {
+      // WorkManager creates its Room database through reflection during startup.
+      extraProguardRules: "-keep class androidx.work.impl.WorkDatabase_Impl { public <init>(); }",
+    } }],
     "expo-secure-store",
     "expo-video",
     "expo-web-browser",
@@ -34,7 +37,7 @@ const config: ExpoConfig = {
     ["expo-image-picker", { photosPermission: "Choose a profile photo.", cameraPermission: false, microphonePermission: false }],
   ],
   extra: {
-    nativeMapsConfigured: Boolean(process.env.GOOGLE_MAPS_ANDROID_API_KEY),
+    nativePushConfigured: Boolean(process.env.GOOGLE_SERVICES_JSON),
     ...(process.env.EXPO_PUBLIC_EAS_PROJECT_ID ? { eas: { projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID } } : {}),
   },
 };

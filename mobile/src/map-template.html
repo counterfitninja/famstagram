@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://tile.openstreetmap.org data:; connect-src https://tile.openstreetmap.org">
+<style>/* LEAFLET_CSS */</style>
+<style>html,body,#map{height:100%;margin:0}body{font-family:sans-serif}.photo-pin{background:#0284c7;border:2px solid white;border-radius:50%;box-shadow:0 2px 6px #0005}.leaflet-popup-content button{background:#0284c7;color:white;border:0;border-radius:6px;padding:8px;margin-top:8px;display:block}</style>
+</head><body><div id="map" role="application" aria-label="Family photo locations"></div>
+<script>/* LEAFLET_JS */</script>
+<script>
+const map = L.map('map').setView([39.8283,-98.5795],4);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19, attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).on('tileerror',function(){window.ReactNativeWebView.postMessage(JSON.stringify({type:'tileError'}));}).addTo(map);
+const pins = L.layerGroup().addTo(map);
+window.updatePoints = function(points) {
+  pins.clearLayers();
+  points.forEach(function(point) {
+    const popup = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = point.title;
+    popup.appendChild(title);
+    if(point.description) { const text = document.createElement('p'); text.textContent = point.description; popup.appendChild(text); }
+    if(point.id) {
+      const button = document.createElement('button'); button.textContent = 'View post';
+      button.onclick = function(){window.ReactNativeWebView.postMessage(JSON.stringify({type:'post',id:point.id}));};
+      popup.appendChild(button);
+    }
+    L.marker([point.latitude,point.longitude],{icon:L.divIcon({className:'photo-pin',iconSize:[18,18],iconAnchor:[9,9]})}).bindPopup(popup).addTo(pins);
+  });
+  if(points.length) map.fitBounds(points.map(function(p){return [p.latitude,p.longitude];}),{padding:[30,30],maxZoom:13});
+  map.invalidateSize();
+};
+window.ReactNativeWebView.postMessage(JSON.stringify({type:'ready'}));
+</script></body></html>

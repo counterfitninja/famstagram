@@ -23,6 +23,7 @@
     "@xmldom/xmldom": "^0.9.12",
     "bcryptjs": "^3.0.2",
     "exifreader": "^4.45.0",
+    "google-auth-library": "^10.9.1",
     "iron-session": "^8.0.4",
     "leaflet": "^1.9.4",
     "next": "^15.1.0",

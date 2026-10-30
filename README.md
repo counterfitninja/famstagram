@@ -103,8 +103,9 @@ validation, and reads original gallery GPS through Android's media-location
 permission. It does not collect the phone's current location.
 
 Deploy the backend and run `npx prisma migrate deploy` before connecting the app.
-See the [native setup guide](mobile/README.md) for Android builds, Google Maps,
-FCM notifications, browser-assisted passkeys, and device acceptance checks.
+See the [native setup guide](mobile/README.md) for Android builds, bundled
+Leaflet/OpenStreetMap maps (no Google Maps key), direct FCM setup,
+browser-assisted passkeys, and device acceptance checks.
 The existing TWA below remains intact while the native app is tested; the
 native test package has a separate identity so both can be installed together.
 

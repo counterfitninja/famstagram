@@ -1,8 +1,9 @@
 # Famstagram native app
 
 Android-first React Native + Expo development build, with shared TypeScript
-screens and data access for a later iOS release. These are native screens, not
-a WebView or the existing Trusted Web Activity in the repository's `android/`.
+screens and data access for a later iOS release. The app uses native screens,
+with Leaflet maps embedded in a restricted WebView. It is not the existing
+Trusted Web Activity in the repository's `android/`.
 
 ## What is connected
 
@@ -15,7 +16,7 @@ a WebView or the existing Trusted Web Activity in the repository's `android/`.
   video playback, likes, timestamped comments and mentions, post deletion.
 - Gallery photo/video uploads, audience selection, captions and original photo
   GPS; Android incoming share intents open the composer for explicit import.
-- Native photo maps, place search/coordinate editing for admins, profiles,
+- Leaflet/OpenStreetMap photo maps, place search/coordinate editing for admins, profiles,
   profile photo changes, member search, notifications, mutes and shared inbox.
 - Feed creation, member management, feed roles, invite creation/sharing/revocation
   (revocation is admin-only, as on the website), account moderation and password
@@ -87,32 +88,93 @@ may omit EXIF even though the post/map retains the coordinates.
 
 ## Maps
 
-Enable the Maps SDK for Android in your Google Cloud project and set
-`GOOGLE_MAPS_ANDROID_API_KEY` before building. Restrict this public client key
-to `uk.co.famstagram.nativeapp` and the signing certificate's SHA-1 fingerprint.
-The native map needs a configured key; it is not the PWA's Leaflet map.
-Without a key, the app shows a configuration notice instead of opening the map.
-Changing build-time configuration requires a new native build.
+Maps use the same **Leaflet + OpenStreetMap** approach as the PWA. No Google
+Maps API key, Google Maps SDK, or billing account is needed. Leaflet JavaScript
+and styles are bundled at dependency installation (`npm run build:map`), not
+downloaded from a third-party script CDN. Both the feed map and post-location
+preview use this component; marker popups open native post details.
+
+The map WebView receives only the currently authorized post locations and
+labels, never the session cookie or media URLs. Text is inserted using
+`textContent`, and messages can navigate only to posts already in the map.
+Map tiles are fetched from `https://tile.openstreetmap.org` with visible
+attribution, an app-identifying User-Agent and normal WebView HTTP caching.
+The tile provider receives your IP address and the requested map area; it
+does not receive captions, account names, photos, or session credentials.
+
+Public OSM tiles are a best-effort community service, not an unlimited hosted
+map service. No offline/prefetch mode is implemented. Follow the
+[tile usage policy](https://operations.osmfoundation.org/policies/tiles/);
+larger deployments should use a suitable tile provider or self-hosted tiles.
 
 ## Native push
 
-1. Link the app to your own Expo EAS project and set
-   `EXPO_PUBLIC_EAS_PROJECT_ID`.
-2. Register the Android package with Firebase, configure FCM v1 credentials
-   in EAS, and set `GOOGLE_SERVICES_JSON` to your client `google-services.json`
-   file (or an EAS file-environment variable). Never bundle a service-account
-   private key in the app.
-3. If Expo enhanced push security is enabled, set `EXPO_ACCESS_TOKEN` on the
-   **server**, not in an `EXPO_PUBLIC_*` variable.
-4. Rebuild, install on a physical Android device, and enable notifications
-   from Settings. Disable explicitly or sign out to unregister this device.
+Android push uses **FCM HTTP v1 directly from your server**, not Expo Push.
+An Expo account/EAS project is not needed for local builds or push delivery.
+The `expo-notifications` library still handles Android permissions,
+notification channels, native device tokens, and notification taps.
+
+### Firebase setup
+
+1. Create a Firebase project (or use an existing one) in the Firebase console.
+   Register an **Android** app with package **`uk.co.famstagram.nativeapp`**,
+   not the legacy TWA's `uk.co.famstagram.app`. SHA fingerprints are not
+   required for FCM alone.
+2. Download its **Android client** `google-services.json`. Save it locally as
+   `mobile\google-services.json` (ignored by Git). In `mobile\.env`, set
+   `GOOGLE_SERVICES_JSON=./google-services.json`. This file has client project
+   identifiers; it is NOT a service-account private key.
+3. Ensure **Firebase Cloud Messaging API (HTTP v1)** is enabled in the same
+   project's Google Cloud APIs. For server authorization, prefer workload
+   identity/Application Default Credentials when available. Otherwise create
+   a dedicated service account with the **Firebase Cloud Messaging API Admin**
+   role (`roles/firebasecloudmessaging.admin`) on this project and generate
+   its private JSON key. This action creates persistent server credentials.
+4. Put that **server-only** key in a restricted, persistent secrets directory
+   outside the app checkout, public assets, and uploads. Set on the server:
+
+   ```dotenv
+   FIREBASE_PROJECT_ID=your-firebase-project-id
+   GOOGLE_APPLICATION_CREDENTIALS=/absolute/container/path/to/firebase-admin.json
+   ```
+
+   The path is as seen inside the running server/container, not your desktop.
+   Ensure only the server process can read it. Never paste the private key
+   into chat, commit it, put it in `mobile/`, or use an `EXPO_PUBLIC_*` variable.
+   With workload identity, omit the credentials-file variable and configure
+   the runtime service account's messaging permissions instead.
+5. Deploy the backend and run `npx prisma migrate deploy`, including the
+   provider migration. Rebuild/install the APK with the Android client file.
+   Both must use the **same Firebase project**. In the native app's Account
+   settings, tap **Enable on this device** and allow notifications.
+6. Test with two accounts in the same feed: enable notifications on the
+   recipient's phone, put the app in the background, and publish from the other
+   account. Check foreground alerts and tapping a notification from a closed
+   app too. Android force-stop blocks delivery until the app is opened again.
+
+For Pelican, re-import the updated egg to expose **Firebase Project ID** and
+**Google Application Credentials File** in Startup settings. Upload/mount the
+private key securely and set the container path, then restart. The egg does
+not create credentials or upload private keys.
+The egg preserves a root `secrets/` directory during reinstalls and Git ignores
+it. For example, upload the key to `secrets/firebase-admin.json` through the
+server's restricted file access, and use
+`/home/container/secrets/firebase-admin.json` in Startup settings. Confirm this
+is your actual runtime mount path. Keep file permissions restricted to the
+server user; hiding the Startup path field does not protect the file itself.
 
 The server selects recipients using existing feed membership, mute and mention
-rules. Expo receives device push tokens, post/feed IDs and a generic message,
-not family names, captions, coordinates or media. Delivery failures are logged;
-immediately rejected unregistered tokens are removed. A push-service acceptance
-ticket is not proof of device delivery. Notification history remains available
-even without FCM/EAS configuration.
+rules. Google receives device tokens, post/feed IDs and a generic message,
+not family names, captions, coordinates or media. Tokens refresh on startup
+and native token-change events for opted-in devices. Disable explicitly or
+sign out to unregister. Server failures are logged without tokens/private keys;
+only explicit FCM `UNREGISTERED` errors remove registrations. FCM acceptance
+is not proof of device delivery. Live delivery cannot be verified without your
+Firebase credentials and a Google Play services-equipped Android device.
+
+Existing browser push and VAPID settings are unchanged. Old Expo device-token
+rows are retained but no longer sent; users of older native builds must update
+and enable notifications again. `EXPO_ACCESS_TOKEN` is no longer used.
 
 ## Builds and identity
 
@@ -135,6 +197,17 @@ It includes its JavaScript bundle and does not need Metro. The generated local
 project uses the Android **debug signing key**, even for this release variant:
 this is an internal test build, not a Play Store release. It targets ARM64
 devices, not x86 emulators. Deploy the native API and database migration first.
+
+Release optimization must preserve `WorkDatabase_Impl`'s public constructor.
+The `expo-build-properties` keep rule in `app.config.ts` prevents WorkManager's
+startup initialization from crashing before the sign-in screen. After changing
+native dependencies or release rules, install the release APK and cold-launch
+it on a device/emulator; successful compilation alone is not a startup check.
+With `ANDROID_HOME` set, run `npm run test:android:launch -- <adb-serial>` from
+`mobile` against a test device without a saved login. This installs the release
+APK, cold-launches it, and checks that the process survives and the sign-in
+screen renders. It does not erase app data. For an x86 emulator, build with
+`'-PreactNativeArchitectures=arm64-v8a,x86_64'` instead of the ARM64-only flag.
 
 For self-contained internal APKs or Play bundles, use the matching profile:
 
@@ -160,6 +233,7 @@ npm run test:native
 
 Set-Location mobile
 npm run typecheck
+npm run test:map
 npx expo install --check
 npx expo export --platform android
 ```
@@ -175,5 +249,5 @@ manager/admin permissions; failed connections and upload retries.
 Uploads currently run in the foreground, not a persistent background queue.
 Server maintenance tools (GPS backfill, storage optimization and web-push
 diagnostics) remain in the web admin interface. The iOS configuration is a
-starting point only: iOS builds, permissions, push credentials, native maps
+starting point only: iOS builds, permissions, APNs push credentials, map
 configuration, share extension and device acceptance remain for the iOS phase.

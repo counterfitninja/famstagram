@@ -1,18 +1,16 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { FlatList, Image, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { FlatList, Image, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import Constants from "expo-constants";
 import { Picker } from "@react-native-picker/picker";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp, NativeStackScreenProps } from "@react-navigation/native-stack";
 import { VideoView, useVideoPlayer } from "expo-video";
-import MapView, { Marker } from "react-native-maps";
+import { PhotoMap } from "./photo-map";
 import { useSession } from "./session";
 import type { Member, Post, StackParams } from "./types";
 import { Avatar, Button, colors, confirm, ErrorNotice, Field, Loading, Page, s, useJob, usePaged, useRemote } from "./ui";
 
 type Navigation = NativeStackNavigationProp<StackParams>;
-const mapsAvailable = Platform.OS !== "android" || Constants.expoConfig?.extra?.nativeMapsConfigured === true;
 function Video({ mediaKey }: { mediaKey: string }) {
   const { api } = useSession();
   const player = useVideoPlayer(api.media(mediaKey));
@@ -68,11 +66,9 @@ export function PostCard({ post, detail = false, reload }: { post: Post; detail?
         <Text style={s.body}><Text style={s.label}>{comment.author.username} </Text>{comment.text}</Text>
         <Text style={s.muted}>{new Date(comment.createdAt).toLocaleString()}</Text>
       </View>)}
-      {post.latitude !== null && post.longitude !== null && detail && (mapsAvailable ? <View style={{ height: 220, overflow: "hidden", borderRadius: 12 }}>
-        <MapView style={{ flex: 1 }} initialRegion={{ latitude: post.latitude, longitude: post.longitude, latitudeDelta: 0.1, longitudeDelta: 0.1 }}>
-          <Marker coordinate={{ latitude: post.latitude, longitude: post.longitude }} title={post.locationName ?? "Photo location"} />
-        </MapView>
-      </View> : <Text style={s.muted}>Photo location: {post.latitude}, {post.longitude}. Maps are not configured in this build.</Text>)}
+      {post.latitude !== null && post.longitude !== null && detail && <View style={{ height: 220, overflow: "hidden", borderRadius: 12 }}>
+        <PhotoMap points={[{ latitude: post.latitude, longitude: post.longitude, title: post.locationName ?? "Photo location" }]} />
+      </View>}
       {!detail && <Button title="View post" secondary onPress={() => navigation.navigate("Post", { id: post.id })} />}
     </View>
   </View>;
@@ -166,9 +162,8 @@ export function MapScreen() {
   const located = result.items.filter((p): p is Post & { latitude: number; longitude: number } => p.latitude !== null && p.longitude !== null);
   return <View style={s.page}><View style={{ padding: 12, gap: 8 }}><FeedSelector /><ErrorNotice error={result.error} retry={() => void result.reload()} /></View>
     {result.loading && <Loading />}
-    {!mapsAvailable ? <View style={s.content}><Text style={s.error}>Maps are not configured in this build. Set the Android Maps SDK key and rebuild the app.</Text></View> : located.length > 0 ? <MapView style={{ flex: 1 }} initialRegion={{ latitude: located[0].latitude, longitude: located[0].longitude, latitudeDelta: 10, longitudeDelta: 10 }}>
-      {located.map((post) => <Marker key={post.id} coordinate={{ latitude: post.latitude, longitude: post.longitude }} title={post.author.username} description={post.locationName ?? post.caption} onCalloutPress={() => navigation.navigate("Post", { id: post.id })} />)}
-    </MapView> : !result.loading && <View style={s.content}><Text style={s.body}>No photos with location metadata in this feed yet.</Text></View>}
+    {located.length > 0 ? <PhotoMap points={located.map((post) => ({ id: post.id, latitude: post.latitude, longitude: post.longitude, title: post.author.username, description: post.locationName ?? post.caption }))} onPost={(id) => navigation.navigate("Post", { id })} />
+      : !result.loading && <View style={s.content}><Text style={s.body}>No photos with location metadata in this feed yet.</Text></View>}
     {result.hasMore && <View style={{ padding: 12 }}><Button title="Load more photo locations" disabled={result.loading} onPress={() => void result.next()} /></View>}
   </View>;
 }

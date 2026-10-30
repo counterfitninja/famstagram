@@ -37,6 +37,7 @@ model User {
 
 model NativePushToken {
   token     String   @id
+  provider  String   @default("expo")
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   updatedAt DateTime @updatedAt

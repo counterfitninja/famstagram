@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { fcmRegistrationSchema } from "@/lib/fcm-contract";
 import { canManageFeed } from "@/lib/feed-context";
 import { nativeCommandSchema, nativeFeedScope, nativeLoginSchema, nativePage, nativeRegisterSchema } from "@/lib/native-contract";
 import { sessionOptions } from "@/lib/session";
@@ -217,12 +218,9 @@ export async function POST(request: Request, context: Context) {
     const user = await getCurrentUser();
     if (!user) return json({ error: "Sign in to continue." }, 401);
     if (resource === "push") {
-      const { token, enabled } = z.object({
-        token: z.string().max(200).regex(/^(Expo|Exponent)PushToken\[[A-Za-z0-9_-]+\]$/),
-        enabled: z.boolean(),
-      }).parse(await request.json());
+      const { token, enabled, provider } = fcmRegistrationSchema.parse(await request.json());
       if (enabled) {
-        await db.nativePushToken.upsert({ where: { token }, create: { token, userId: user.id }, update: { userId: user.id } });
+        await db.nativePushToken.upsert({ where: { token }, create: { token, provider, userId: user.id }, update: { provider, userId: user.id } });
       } else {
         await db.nativePushToken.deleteMany({ where: { token, userId: user.id } });
       }
