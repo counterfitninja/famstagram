@@ -4,7 +4,7 @@
     "version": "PTDL_v2"
   },
   "exported_at": "2026-09-05T00:00:00+00:00",
-  "name": "Famstagram v1.1.7",
+  "name": "Famstagram v1.1.8",
   "author": "admin@example.com",
   "description": "Private, invite-only family photo and video sharing app built with Next.js, Prisma, and SQLite.",
   "features": null,
@@ -75,6 +75,16 @@
       "user_viewable": true,
       "user_editable": true,
       "rules": "nullable|string|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "Android Signing Certificate Fingerprints",
+      "description": "Optional comma-separated SHA-256 signing certificate fingerprints (32 colon-separated hex pairs each) for Android Trusted Web Activity verification. For Google Play, use the app signing certificate, not the upload certificate. Leave blank to trust no Android apps. Only add debug certificates temporarily for intentional testing. Restart the server after changing this value.",
+      "env_variable": "ANDROID_SHA256_CERT_FINGERPRINTS",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:4096",
       "field_type": "text"
     },
     {

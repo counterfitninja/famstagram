@@ -88,13 +88,27 @@ app/
   api/posts                       # post upload (route handler, supports large files)
   api/media/[key]                 # authenticated media serving
 android/                          # Bubblewrap-generated Android Trusted Web Activity
+mobile/                           # Android-first React Native / Expo app (shared future iOS codebase)
 components/                       # UI components (PostCard, MediaCarousel, LikeButton, …)
 lib/                              # db, session, auth guards, storage abstraction, validation
 prisma/                           # schema + seed
 middleware.ts                     # redirects unauthenticated visitors to /login
 ```
 
-## Android app (Trusted Web Activity)
+## Native Android app (React Native / Expo)
+
+The new native app lives in [`mobile/`](mobile/README.md). It recreates the
+Famstagram screens with native controls, shares the existing server and media
+validation, and reads original gallery GPS through Android's media-location
+permission. It does not collect the phone's current location.
+
+Deploy the backend and run `npx prisma migrate deploy` before connecting the app.
+See the [native setup guide](mobile/README.md) for Android builds, Google Maps,
+FCM notifications, browser-assisted passkeys, and device acceptance checks.
+The existing TWA below remains intact while the native app is tested; the
+native test package has a separate identity so both can be installed together.
+
+## Legacy Android app (Trusted Web Activity)
 
 The Android project in `android/` opens **https://www.famstagram.co.uk/** using
 a Trusted Web Activity (TWA), not a separate native UI or embedded WebView.
@@ -150,6 +164,11 @@ Until its certificate is associated with the website, a browser toolbar is expec
    not just the upload certificate. For local debug verification, inspect
    `~/.android/debug.keystore` with alias `androiddebugkey` instead; only
    authorize debug certificates on environments where you intend to trust them.
+
+   For Pelican/Pterodactyl, update the existing egg by importing
+   `pelican/egg-famstagram.json`, then set **Android Signing Certificate
+   Fingerprints** in the server's Startup settings. The field is optional and
+   defaults to blank; add only the certificates you intend to trust.
 
 3. Deploy/restart the web app with that environment variable, then check:
 

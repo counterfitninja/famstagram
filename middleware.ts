@@ -15,6 +15,7 @@ const PUBLIC_ASSETS = [
   "/icon.jpeg",
   "/apple-icon.jpeg",
   "/logo.jpeg",
+  "/mobile-login",
 ];
 
 /**
@@ -27,7 +28,8 @@ export function middleware(req: NextRequest) {
   const isPublicAsset = PUBLIC_ASSETS.includes(pathname);
   const hasSessionCookie = req.cookies.has(sessionOptions.cookieName);
 
-  if (!hasSessionCookie && !isPublic && !isPublicAsset) {
+  // Native JSON endpoints authenticate internally, including password sign-in.
+  if (!hasSessionCookie && !isPublic && !isPublicAsset && !pathname.startsWith("/api/native/")) {
     const loginUrl = toRequestUrl(req, "/login");
     const returnPath = `${pathname}${req.nextUrl.search}`.slice(0, 512);
     loginUrl.searchParams.set("next", returnPath);

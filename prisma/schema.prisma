@@ -31,6 +31,27 @@ model User {
   mutedByOthers    NotificationMute[] @relation("MutedByOthers")
   passkeys         WebAuthnCredential[]
   feedMemberships  FeedMembership[]
+  nativePushTokens NativePushToken[]
+  nativeLoginGrants NativeLoginGrant[]
+}
+
+model NativePushToken {
+  token     String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model NativeLoginGrant {
+  codeHash  String   @id
+  challenge String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+
+  @@index([expiresAt])
 }
 
 model Feed {

@@ -39,3 +39,13 @@ next-env.d.ts
 /android/signing.properties
 *.keystore
 *.jks
+
+# Native Expo app (independent dependencies and generated projects)
+/mobile/node_modules/
+/mobile/.expo/
+/mobile/android/
+/mobile/ios/
+/mobile/dist/
+/mobile/.env
+/mobile/google-services.json
+/mobile/GoogleService-Info.plist
